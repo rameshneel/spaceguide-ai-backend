@@ -1,0 +1,43 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Dev Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          port: ${{ secrets.DEV_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.DEV_DEPLOY_PATH || '/opt/spaceguide-ai-backend' }}
+
+            # Pull latest code
+            git fetch origin
+            git checkout develop
+            git pull origin develop
+
+            # Pull latest images
+            docker-compose -p ai-portal-dev -f docker-compose.yml -f docker-compose.dev.yml pull
+
+            # Build and start services
+            docker-compose -p ai-portal-dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+            # Clean up old images
+            docker image prune -f
+
+            # Show status
+            docker-compose -p ai-portal-dev ps

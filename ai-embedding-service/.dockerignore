@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+# Note: .env.dev, .env.staging, .env.prod are NOT ignored here
+# They are needed in Docker image for pydantic-settings to work
+# docker-compose override files load them via env_file directive
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Model Cache (will be mounted as volume)
+.cache/
+models/
+*.pt
+*.pth
+*.bin
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+test/
+tests/
+*.pyc
+
+# Build files
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+temp/
+tmp/
+

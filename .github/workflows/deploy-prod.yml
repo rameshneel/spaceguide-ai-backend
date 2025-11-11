@@ -1,0 +1,51 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch: # Manual trigger only
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # Requires approval in GitHub
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Prod Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.PROD_DEPLOY_PATH || '/opt/spaceguide-ai-backend' }}
+
+            # Pull latest code
+            git fetch origin
+            git checkout main
+            git pull origin main
+
+            # Pull latest images
+            docker-compose -p ai-portal-prod -f docker-compose.yml -f docker-compose.prod.yml pull
+
+            # Build and start services
+            docker-compose -p ai-portal-prod -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+            # Wait for health checks
+            sleep 10
+
+            # Check service status
+            docker-compose -p ai-portal-prod ps
+
+            # Clean up old images
+            docker image prune -f
+
+            # Optional: Send notification
+            echo "✅ Production deployment completed successfully"

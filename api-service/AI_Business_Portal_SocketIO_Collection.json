@@ -1,0 +1,585 @@
+{
+  "info": {
+    "name": "AI Business Portal - Socket.IO Testing",
+    "description": "Complete Socket.IO testing collection for AI Business Portal with step-by-step authentication and real-time features testing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "1. Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"Password123\",\n  \"role\": \"customer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('User registered successfully', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ User registered successfully');",
+                  "} else {",
+                  "    console.log('ℹ️ User might already exist - proceed to login');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Login User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Login successful', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "        pm.expect(response.data.accessToken).to.exist;",
+                  "    });",
+                  "    ",
+                  "    // Save JWT token and user ID",
+                  "    pm.collectionVariables.set('jwt_token', response.data.accessToken);",
+                  "    pm.collectionVariables.set('user_id', response.data.user._id);",
+                  "    ",
+                  "    console.log('✅ Login successful');",
+                  "    console.log('🔑 JWT Token saved:', response.data.accessToken.substring(0, 20) + '...');",
+                  "    console.log('👤 User ID saved:', response.data.user._id);",
+                  "} else {",
+                  "    console.log('❌ Login failed:', pm.response.text);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Verify Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "profile"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Token is valid', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ JWT Token is valid');",
+                  "    console.log('👤 User:', response.data.user.firstName, response.data.user.lastName);",
+                  "} else {",
+                  "    console.log('❌ Token verification failed');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🏥 Health Check",
+      "item": [
+        {
+          "name": "Server Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Server is running', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ Server is running');",
+                  "    console.log('📊 Uptime:', response.uptime, 'seconds');",
+                  "} else {",
+                  "    console.log('❌ Server is not responding');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Socket.IO Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/socket/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "socket", "status"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Socket.IO service is active', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "        pm.expect(response.data.status).to.eql('active');",
+                  "    });",
+                  "    console.log('✅ Socket.IO service is active');",
+                  "    console.log('👥 Connected users:', response.data.connectedUsers);",
+                  "    console.log('🔌 WebSocket URL:', response.data.endpoints.websocket);",
+                  "} else {",
+                  "    console.log('❌ Socket.IO service not available');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔌 Socket.IO Testing",
+      "item": [
+        {
+          "name": "Socket.IO Connection Test",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/socket/connected-users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "socket", "connected-users"]
+            },
+            "description": "Check connected users before Socket.IO testing"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Socket.IO endpoint accessible', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ Socket.IO endpoint accessible');",
+                  "    console.log('👥 Currently connected users:', response.data.connectedCount);",
+                  "    console.log('📝 Now you can test Socket.IO connection in Postman with URL: {{base_url}}');",
+                  "    console.log('🔑 Use JWT Token: {{jwt_token}}');",
+                  "} else {",
+                  "    console.log('❌ Socket.IO endpoint not accessible');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📱 Socket.IO Events Testing",
+      "item": [
+        {
+          "name": "Send Notification to User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Notification\",\n  \"message\": \"This is a test notification from Postman\",\n  \"type\": \"info\",\n  \"data\": {\n    \"source\": \"postman_test\",\n    \"timestamp\": \"{{$timestamp}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/socket/notify/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "socket", "notify", "{{user_id}}"]
+            },
+            "description": "Send a notification to the logged-in user"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Notification sent successfully', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ Notification sent successfully');",
+                  "    console.log('📨 Notification ID:', response.data.notification.id);",
+                  "    console.log('📱 Check Socket.IO connection to receive the notification');",
+                  "} else {",
+                  "    console.log('❌ Failed to send notification');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check User Online Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/socket/user/{{user_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "socket", "user", "{{user_id}}", "status"]
+            },
+            "description": "Check if the user is online via Socket.IO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('User status retrieved', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ User status retrieved');",
+                  "    console.log('👤 User ID:', response.data.userId);",
+                  "    console.log('🟢 Online Status:', response.data.isOnline ? 'ONLINE' : 'OFFLINE');",
+                  "    if (response.data.isOnline) {",
+                  "        console.log('📱 User is connected via Socket.IO');",
+                  "    } else {",
+                  "        console.log('📱 User is not connected - connect via Socket.IO to see real-time updates');",
+                  "    }",
+                  "} else {",
+                  "    console.log('❌ Failed to get user status');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin Testing",
+      "item": [
+        {
+          "name": "Create Admin User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Admin\",\n  \"lastName\": \"User\",\n  \"email\": \"admin@example.com\",\n  \"password\": \"Admin123\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Create an admin user for testing admin features"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Admin user created', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ Admin user created successfully');",
+                  "} else {",
+                  "    console.log('ℹ️ Admin user might already exist');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Admin User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"Admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login as admin user"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Admin login successful', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "        pm.expect(response.data.user.role).to.eql('admin');",
+                  "    });",
+                  "    ",
+                  "    // Save admin JWT token",
+                  "    pm.collectionVariables.set('admin_jwt_token', response.data.accessToken);",
+                  "    ",
+                  "    console.log('✅ Admin login successful');",
+                  "    console.log('🔑 Admin JWT Token saved');",
+                  "    console.log('👑 Admin role confirmed');",
+                  "} else {",
+                  "    console.log('❌ Admin login failed');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Broadcast Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Server maintenance scheduled for tonight at 2 AM\",\n  \"type\": \"warning\",\n  \"data\": {\n    \"maintenance\": true,\n    \"duration\": \"2 hours\",\n    \"timestamp\": \"{{$timestamp}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/socket/admin/broadcast",
+              "host": ["{{base_url}}"],
+              "path": ["api", "socket", "admin", "broadcast"]
+            },
+            "description": "Send admin broadcast to all connected users"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Admin broadcast sent', () => {",
+                  "        pm.expect(response.success).to.be.true;",
+                  "    });",
+                  "    console.log('✅ Admin broadcast sent successfully');",
+                  "    console.log('📢 Message:', response.data.broadcast.message);",
+                  "    console.log('📱 All connected users will receive this message via Socket.IO');",
+                  "} else {",
+                  "    console.log('❌ Failed to send admin broadcast');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📋 Socket.IO Testing Instructions",
+      "item": [
+        {
+          "name": "Socket.IO Connection Guide",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Instructions for Socket.IO testing in Postman"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "console.log('📋 SOCKET.IO TESTING INSTRUCTIONS:');",
+                  "console.log('');",
+                  "console.log('1. 🔐 AUTHENTICATION:');",
+                  "console.log('   - Run \"Login User\" request first');",
+                  "console.log('   - JWT token will be automatically saved');",
+                  "console.log('');",
+                  "console.log('2. 🔌 SOCKET.IO CONNECTION:');",
+                  "console.log('   - Open new Socket.IO request in Postman');",
+                  "console.log('   - URL: {{base_url}}');",
+                  "console.log('   - Add Header: Authorization: Bearer {{jwt_token}}');",
+                  "console.log('   - Click \"Connect\" button');",
+                  "console.log('');",
+                  "console.log('3. 📱 TESTING EVENTS:');",
+                  "console.log('   - Send \"Send Notification to User\" request');",
+                  "console.log('   - Check Socket.IO connection for real-time notification');",
+                  "console.log('   - Try admin broadcast if admin user is created');",
+                  "console.log('');",
+                  "console.log('4. 🎯 AVAILABLE SOCKET.IO EVENTS:');",
+                  "console.log('   - connected: Connection confirmation');",
+                  "console.log('   - notification: Receive notifications');",
+                  "console.log('   - admin_message: Receive admin broadcasts');",
+                  "console.log('   - user_online/user_offline: User presence');",
+                  "console.log('   - ai_text_generation_start: AI service events');",
+                  "console.log('   - send_message: Chat functionality');",
+                  "console.log('');",
+                  "console.log('5. 🚨 TROUBLESHOOTING:');",
+                  "console.log('   - Ensure server is running: npm run dev');",
+                  "console.log('   - Check MongoDB is running');",
+                  "console.log('   - Verify JWT token is valid');",
+                  "console.log('   - Use http://localhost:5000 (not ws://)');",
+                  "console.log('');",
+                  "console.log('✅ Ready to test Socket.IO!');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-setup for Socket.IO testing",
+          "if (!pm.collectionVariables.get('base_url')) {",
+          "    pm.collectionVariables.set('base_url', 'http://localhost:5000');",
+          "}"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+version: "3.8"
+
+# Development docker-compose override
+# Usage: docker-compose -p ai-portal-dev -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  # FastAPI Embedding Service - Dev
+  embedding-service:
+    container_name: ai-portal-embedding-dev
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+    env_file:
+      - ./ai-embedding-service/.env.dev
+    volumes:
+      - embedding_cache_dev:/app/.cache
+    networks:
+      - ai-portal-network-dev
+
+  # Node.js Backend - Dev
+  backend:
+    container_name: ai-portal-backend-dev
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+    env_file:
+      - ./api-service/.env.dev
+    volumes:
+      - backend_uploads_dev:/app/uploads
+      - backend_images_dev:/app/public/generated-images
+      - backend_logs_dev:/app/logs
+    networks:
+      - ai-portal-network-dev
+
+  # ChromaDB - Dev
+  chromadb:
+    container_name: ai-portal-chromadb-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data_dev:/data
+    networks:
+      - ai-portal-network-dev
+
+  # Ollama - Dev
+  ollama:
+    container_name: ai-portal-ollama-dev
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data_dev:/root/.ollama
+    networks:
+      - ai-portal-network-dev
+    # No GPU required for dev (CPU mode)
+
+volumes:
+  embedding_cache_dev:
+    driver: local
+  backend_uploads_dev:
+    driver: local
+  backend_images_dev:
+    driver: local
+  backend_logs_dev:
+    driver: local
+  chromadb_data_dev:
+    driver: local
+  ollama_data_dev:
+    driver: local
+
+networks:
+  ai-portal-network-dev:
+    driver: bridge

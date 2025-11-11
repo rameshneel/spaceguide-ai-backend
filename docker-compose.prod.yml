@@ -1,0 +1,115 @@
+version: "3.8"
+
+# Production docker-compose override
+# Usage: docker-compose -p ai-portal-prod -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # FastAPI Embedding Service - Prod
+  embedding-service:
+    container_name: ai-portal-embedding-prod
+    restart: unless-stopped
+    ports:
+      - "9001:8001" # Different port from dev
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    env_file:
+      - ./ai-embedding-service/.env.prod
+    volumes:
+      - embedding_cache_prod:/app/.cache
+    networks:
+      - ai-portal-network-prod
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "1"
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Node.js Backend - Prod
+  backend:
+    container_name: ai-portal-backend-prod
+    restart: unless-stopped
+    ports:
+      - "5001:5000" # Different port from dev
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+    env_file:
+      - ./api-service/.env.prod
+    volumes:
+      - backend_uploads_prod:/app/uploads
+      - backend_images_prod:/app/public/generated-images
+      - backend_logs_prod:/app/logs
+    networks:
+      - ai-portal-network-prod
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "1"
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ChromaDB - Prod
+  chromadb:
+    container_name: ai-portal-chromadb-prod
+    restart: unless-stopped
+    ports:
+      - "9000:8000" # Different port from dev
+    volumes:
+      - chromadb_data_prod:/data
+    networks:
+      - ai-portal-network-prod
+
+  # Ollama - Prod
+  ollama:
+    container_name: ai-portal-ollama-prod
+    restart: unless-stopped
+    ports:
+      - "11435:11434" # Different port from dev
+    volumes:
+      - ollama_data_prod:/root/.ollama
+    networks:
+      - ai-portal-network-prod
+    # GPU support (uncomment if available)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  embedding_cache_prod:
+    driver: local
+  backend_uploads_prod:
+    driver: local
+  backend_images_prod:
+    driver: local
+  backend_logs_prod:
+    driver: local
+  chromadb_data_prod:
+    driver: local
+  ollama_data_prod:
+    driver: local
+
+networks:
+  ai-portal-network-prod:
+    driver: bridge
+
+  # Note: MongoDB is system-wide installed (not in Docker)

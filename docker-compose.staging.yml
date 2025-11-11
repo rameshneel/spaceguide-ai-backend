@@ -1,0 +1,80 @@
+version: "3.8"
+
+# Staging docker-compose override (Customer/Client Testing)
+# Usage: docker-compose -p ai-portal-staging -f docker-compose.yml -f docker-compose.staging.yml up -d
+
+services:
+  # FastAPI Embedding Service - Staging
+  embedding-service:
+    container_name: ai-portal-embedding-staging
+    restart: unless-stopped
+    ports:
+      - "8002:8001" # Different port from dev (8001) and prod (9001)
+    environment:
+      - ENVIRONMENT=staging
+      - LOG_LEVEL=INFO
+    env_file:
+      - ./ai-embedding-service/.env.staging
+    volumes:
+      - embedding_cache_staging:/app/.cache
+    networks:
+      - ai-portal-network-staging
+
+  # Node.js Backend - Staging
+  backend:
+    container_name: ai-portal-backend-staging
+    restart: unless-stopped
+    ports:
+      - "5002:5000" # Different port from dev (5000) and prod (5001)
+    environment:
+      - NODE_ENV=staging
+      - PORT=5000
+    env_file:
+      - ./api-service/.env.staging
+    volumes:
+      - backend_uploads_staging:/app/uploads
+      - backend_images_staging:/app/public/generated-images
+      - backend_logs_staging:/app/logs
+    networks:
+      - ai-portal-network-staging
+
+  # ChromaDB - Staging
+  chromadb:
+    container_name: ai-portal-chromadb-staging
+    restart: unless-stopped
+    ports:
+      - "8002:8000" # Different port from dev (8000) and prod (9000)
+    volumes:
+      - chromadb_data_staging:/data
+    networks:
+      - ai-portal-network-staging
+
+  # Ollama - Staging
+  ollama:
+    container_name: ai-portal-ollama-staging
+    restart: unless-stopped
+    ports:
+      - "11436:11434" # Different port from dev (11434) and prod (11435)
+    volumes:
+      - ollama_data_staging:/root/.ollama
+    networks:
+      - ai-portal-network-staging
+    # No GPU required for staging (CPU mode)
+
+volumes:
+  embedding_cache_staging:
+    driver: local
+  backend_uploads_staging:
+    driver: local
+  backend_images_staging:
+    driver: local
+  backend_logs_staging:
+    driver: local
+  chromadb_data_staging:
+    driver: local
+  ollama_data_staging:
+    driver: local
+
+networks:
+  ai-portal-network-staging:
+    driver: bridge

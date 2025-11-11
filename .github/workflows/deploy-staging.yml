@@ -1,0 +1,49 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.STAGING_DEPLOY_PATH || '/opt/spaceguide-ai-backend' }}
+
+            # Pull latest code
+            git fetch origin
+            git checkout staging
+            git pull origin staging
+
+            # Pull latest images
+            docker-compose -p ai-portal-staging -f docker-compose.yml -f docker-compose.staging.yml pull
+
+            # Build and start services
+            docker-compose -p ai-portal-staging -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+
+            # Wait for health checks
+            sleep 10
+
+            # Check service status
+            docker-compose -p ai-portal-staging ps
+
+            # Clean up old images
+            docker image prune -f
+
+            # Optional: Send notification
+            echo "✅ Staging deployment completed successfully"
