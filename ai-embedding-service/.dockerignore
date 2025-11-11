@@ -30,10 +30,19 @@ logs/
 
 # Model Cache (will be mounted as volume)
 .cache/
-models/
+
+# ML Model Files (exclude model weights, but NOT app/models/ Python code directory)
 *.pt
 *.pth
 *.bin
+*.safetensors
+*.onnx
+
+# Only exclude root-level models/ directory if it exists for ML models
+/models/
+
+# IMPORTANT: Do NOT exclude app/models/ - it contains Python code (Pydantic models)
+!app/models/
 
 # OS
 .DS_Store
