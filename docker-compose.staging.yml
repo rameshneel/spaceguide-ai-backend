@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Staging docker-compose override (Customer/Client Testing)
 # Usage: docker-compose -p ai-portal-staging -f docker-compose.yml -f docker-compose.staging.yml up -d
 

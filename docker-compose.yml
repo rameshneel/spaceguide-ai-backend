@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Note: MongoDB is installed system-wide (outside Docker)
   # Backend connects to host MongoDB via host.docker.internal:27017

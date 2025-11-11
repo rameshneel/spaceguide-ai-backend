@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Production docker-compose override
 # Usage: docker-compose -p ai-portal-prod -f docker-compose.yml -f docker-compose.prod.yml up -d
 
