@@ -45,8 +45,11 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Files copied: .env.dev, .env.staging, .env.prod, .env (fallback)
 COPY --chown=appuser:appuser .env* ./
 
-# Copy app source code separately (ensures only code changes trigger rebuild)
-COPY --chown=appuser:appuser . .
+# Copy app source code (explicitly copy app/ directory to ensure all Python code is included)
+COPY --chown=appuser:appuser app/ ./app/
+
+# Copy other necessary files (requirements.txt, main.py, etc.)
+COPY --chown=appuser:appuser requirements.txt main.py ./
 
 # Make directories
 RUN mkdir -p logs .cache && chown -R appuser:appuser logs .cache
