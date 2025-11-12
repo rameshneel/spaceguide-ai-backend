@@ -44,10 +44,18 @@ logs/
 
 # Model Cache
 .cache/
-models/
+
+# ML Model Files (exclude model weights, but NOT app/models/ Python code directory)
+# Only exclude root-level models/ directory and ML model file extensions
 *.pt
 *.pth
 *.bin
+*.safetensors
+*.onnx
+
+# IMPORTANT: Do NOT exclude app/models/ - it contains Python code (Pydantic models)
+# The pattern below only excludes root-level models/ directory, not app/models/
+/models/
 
 # OS
 .DS_Store
