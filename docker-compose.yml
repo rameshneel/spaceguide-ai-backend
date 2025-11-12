@@ -77,8 +77,8 @@ services:
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-    ports:
-      - "5000:5000"
+    # Note: ports are defined in override files (docker-compose.dev.yml, docker-compose.staging.yml, docker-compose.prod.yml)
+    # Base file doesn't define ports to avoid conflicts
     volumes:
       - backend_uploads:/app/uploads
       - backend_images:/app/public/generated-images
