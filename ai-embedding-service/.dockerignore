@@ -17,10 +17,7 @@ ENV/
 *.swp
 *.swo
 
-# Environment variables
-# Note: .env.dev, .env.staging, .env.prod are NOT ignored here
-# They are needed in Docker image for pydantic-settings to work
-# docker-compose override files load them via env_file directive
+# Environment variables (but NOT .env.dev, .env.staging, .env.prod)
 .env
 .env.local
 
@@ -33,7 +30,6 @@ logs/
 
 # ML Model Files (exclude model weights, but NOT app/models/ Python code directory)
 # Note: We only exclude specific file extensions, not directories
-# This ensures app/models/ (Python code) is included
 *.pt
 *.pth
 *.bin

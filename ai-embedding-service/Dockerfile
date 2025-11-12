@@ -45,11 +45,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Files copied: .env.dev, .env.staging, .env.prod, .env (fallback)
 COPY --chown=appuser:appuser .env* ./
 
-# Copy app source code (explicitly copy app/ directory to ensure all Python code is included)
-COPY --chown=appuser:appuser app/ ./app/
-
-# Copy other necessary files (requirements.txt, main.py, etc.)
-COPY --chown=appuser:appuser requirements.txt main.py ./
+# Copy ALL source code (except what's in .dockerignore)
+# This ensures app/models/ and all other directories are included
+COPY --chown=appuser:appuser . .
 
 # Make directories
 RUN mkdir -p logs .cache && chown -R appuser:appuser logs .cache
