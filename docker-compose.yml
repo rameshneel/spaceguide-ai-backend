@@ -53,9 +53,7 @@ services:
       # All variables loaded from api-service/.env via env_file above
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=${PORT:-5000}
-      # MongoDB is system-wide installed, connect via host.docker.internal
-      # For Linux (Docker Engine): use 172.17.0.1 instead of host.docker.internal
-      - MONGODB_URI=${MONGODB_URI:-mongodb://host.docker.internal:27017/spaceguide-ai-backend}
+      # MongoDB URI is loaded from env_file in override files (docker-compose.dev.yml, docker-compose.staging.yml, docker-compose.prod.yml)
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-service:8001}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-fastapi}
       - CHAT_PROVIDER=${CHAT_PROVIDER:-ollama}
