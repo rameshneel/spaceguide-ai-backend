@@ -87,3 +87,4 @@ mongodb-data/
 # Docker volumes (if mounted locally)
 volumes/
 
+.env
