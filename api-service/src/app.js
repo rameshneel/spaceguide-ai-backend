@@ -121,6 +121,14 @@ app.use(
     next();
   }
 );
+app.use(
+  "/api/payment/paypal/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res, next) => {
+    req.rawBody = req.body;
+    next();
+  }
+);
 
 // Request timeout middleware (30 seconds)
 // app.use(timeout("30s"));
@@ -158,6 +166,10 @@ app.use("/uploads", express.static("uploads", staticOptions));
 app.use(
   "/generated-images",
   express.static("public/generated-images", staticOptions)
+);
+app.use(
+  "/generated-videos",
+  express.static("public/generated-videos", staticOptions)
 );
 app.use(express.static("public", staticOptions));
 

@@ -186,6 +186,101 @@ export const initializeAIImageGeneratorService = async () => {
   }
 };
 
+// Initialize AI Video Generator Service in Database
+export const initializeAIVideoGeneratorService = async () => {
+  try {
+    // Check if service already exists
+    const existingService = await Service.findOne({
+      type: "ai_video_generator",
+    });
+    if (existingService) {
+      logger.info("✅ AI Video Generator service already exists");
+      return existingService;
+    }
+
+    // Create new service
+    const service = new Service({
+      name: "AI Video Generator",
+      type: "ai_video_generator",
+      description:
+        "Generate high-quality videos from text prompts using Qwen API",
+      category: "AI Content Generation",
+
+      // API Configuration
+      apiConfig: {
+        provider: "qwen",
+        apiKey: process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || "sk-your-qwen-api-key",
+        baseUrl: "https://dashscope.aliyuncs.com/api/v1",
+        endpoints: {
+          generate: "services/aigc/video-generation/generation",
+          status: "tasks",
+        },
+      },
+
+      // Service Status
+      status: "active",
+
+      // Usage Limits
+      limits: {
+        dailyRequests: 20,
+        monthlyRequests: 600,
+        maxVideosPerRequest: 1, // Videos are resource-intensive
+      },
+
+      // Pricing
+      pricing: {
+        free: {
+          videosPerDay: 1,
+          requestsPerDay: 1,
+        },
+        paid: {
+          videosPerDay: 10,
+          requestsPerDay: 10,
+        },
+      },
+
+      // Features
+      features: [
+        "Qwen API integration for video generation",
+        "Multiple resolutions (720p, 1080p)",
+        "Multiple durations (3s, 5s, 10s, 15s, 30s)",
+        "Multiple aspect ratios (16:9, 9:16, 1:1)",
+        "6 style options (cinematic, realistic, artistic, animated, documentary, futuristic)",
+        "Customizable FPS (15-60)",
+        "Permanent video storage",
+        "Async task polling for long-running generations",
+      ],
+
+      // Statistics
+      statistics: {
+        totalRequests: 0,
+        successfulRequests: 0,
+        failedRequests: 0,
+        totalVideos: 0,
+        averageResponseTime: 0,
+      },
+
+      // Configuration
+      config: {
+        defaultModel: "qwen-vl-max",
+        defaultResolution: "720p",
+        defaultDuration: 5,
+        defaultAspectRatio: "16:9",
+        defaultFps: 24,
+        defaultStyle: "cinematic",
+        timeout: 300000, // 5 minutes
+      },
+    });
+
+    await service.save();
+    logger.info("✅ AI Video Generator service created successfully");
+    return service;
+  } catch (error) {
+    logger.error("❌ Error creating AI Video Generator service:", error);
+    throw error;
+  }
+};
+
 // Initialize AI Chatbot Builder Service in Database
 export const initializeAIChatbotBuilderService = async () => {
   try {

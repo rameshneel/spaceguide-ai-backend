@@ -61,6 +61,11 @@ const subscriptionPlanSchema = new mongoose.Schema(
         requestsPerDay: { type: Number, default: 0 },
         enabled: { type: Boolean, default: false },
       },
+      aiVideoGenerator: {
+        videosPerDay: { type: Number, default: 0 },
+        requestsPerDay: { type: Number, default: 0 },
+        enabled: { type: Boolean, default: false },
+      },
       aiSearch: {
         searchesPerDay: { type: Number, default: 0 },
         requestsPerDay: { type: Number, default: 0 },
@@ -82,6 +87,12 @@ const subscriptionPlanSchema = new mongoose.Schema(
     stripe: {
       priceIdMonthly: { type: String, trim: true },
       priceIdYearly: { type: String, trim: true },
+      productId: { type: String, trim: true },
+    },
+    // PayPal Integration
+    paypal: {
+      planIdMonthly: { type: String, trim: true },
+      planIdYearly: { type: String, trim: true },
       productId: { type: String, trim: true },
     },
 

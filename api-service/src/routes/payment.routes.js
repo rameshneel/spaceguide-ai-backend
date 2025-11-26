@@ -9,6 +9,10 @@ import {
   cancelStripeSubscription,
   checkPaymentStatus,
   retryPayment,
+  createPayPalSubscription,
+  approvePayPalSubscription,
+  cancelPayPalSubscription,
+  handlePayPalWebhook,
 } from "../controllers/payment.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 import { validateSubscriptionUpgrade } from "../validation/subscription.validation.js";
@@ -33,6 +37,16 @@ router.post(
   createStripeSubscription
 );
 
+// PayPal subscription routes
+router.post(
+  "/paypal/create-subscription",
+  verifyJWT,
+  validateSubscriptionUpgrade,
+  createPayPalSubscription
+);
+router.post("/paypal/approve", verifyJWT, approvePayPalSubscription);
+router.post("/paypal/cancel", verifyJWT, cancelPayPalSubscription);
+
 // Get payment methods
 router.get("/methods", verifyJWT, getPaymentMethods);
 
@@ -51,5 +65,6 @@ router.post("/subscription/cancel", verifyJWT, cancelStripeSubscription);
 
 // Handle Stripe webhooks (no auth required - uses signature verification)
 router.post("/webhook", handleStripeWebhook);
+router.post("/paypal/webhook", handlePayPalWebhook);
 
 export default router;

@@ -14,6 +14,7 @@ const serviceSchema = new mongoose.Schema(
       enum: [
         "ai_text_writer",
         "ai_image_generator",
+        "ai_video_generator",
         "ai_chatbot_builder",
         "ai_search",
         "text",

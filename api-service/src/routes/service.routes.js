@@ -9,11 +9,15 @@ import {
   getImageHistory,
   getImageStats,
   getImageOptions,
+  generateVideo,
+  getVideoHistory,
+  getVideoOptions,
 } from "../controllers/service.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 import {
   validateTextGeneration,
   validateImageGeneration,
+  validateVideoGeneration,
 } from "../validation/service.validation.js";
 
 const router = express.Router();
@@ -56,5 +60,23 @@ router.get("/image/options", verifyJWT, getImageOptions);
 
 // Get Image Usage Statistics
 router.get("/image/usage", verifyJWT, getImageStats);
+
+// ========================================
+// AI VIDEO GENERATOR SERVICE ROUTES
+// ========================================
+
+// Generate AI Video
+router.post(
+  "/video/generate",
+  verifyJWT,
+  validateVideoGeneration,
+  generateVideo
+);
+
+// Get Video Generation History
+router.get("/video/history", verifyJWT, getVideoHistory);
+
+// Get Video Generation Options (Resolutions, Durations, Styles, Aspect Ratios)
+router.get("/video/options", verifyJWT, getVideoOptions);
 
 export default router;
