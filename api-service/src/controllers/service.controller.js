@@ -5,6 +5,7 @@ import Subscription from "../models/subscription.model.js";
 import SubscriptionPlan from "../models/subscriptionPlan.model.js";
 import { aiTextWriterService } from "../services/ai/services/textWriter/index.js";
 import { aiImageGeneratorService } from "../services/ai/services/imageGenerator/index.js";
+import { aiVideoGeneratorService } from "../services/ai/services/videoGenerator/index.js";
 import {
   asyncHandler,
   ApiError,
@@ -18,6 +19,7 @@ import {
 import {
   DEFAULT_WORD_LIMIT,
   DEFAULT_IMAGE_LIMIT,
+  DEFAULT_VIDEO_LIMIT,
   WORD_ESTIMATES,
   ERROR_CODES,
 } from "../constants/index.js";
@@ -1137,6 +1139,340 @@ export const getImageOptions = asyncHandler(async (req, res) => {
         styles: styles,
       },
       "Image generator options retrieved successfully"
+    )
+  );
+});
+
+// ========================================
+// AI VIDEO GENERATOR SERVICE
+// ========================================
+
+// Calculate video generation cost based on provider, duration and resolution
+const calculateVideoCost = (provider, duration, resolution) => {
+  // Qwen API pricing (approximate - adjust based on actual pricing)
+  // Videos are more expensive than images
+  const baseCost = 0.5; // Base cost per video
+  const durationMultiplier = duration / 5; // Cost increases with duration
+  const resolutionMultiplier = resolution === "1080p" ? 1.5 : 1.0;
+
+  return baseCost * durationMultiplier * resolutionMultiplier;
+};
+
+// Generate AI Video
+export const generateVideo = asyncHandler(async (req, res) => {
+  const { prompt, duration, resolution, aspectRatio, fps, style } = req.body;
+  const userId = req.user._id;
+  let service = null;
+
+  // Validation
+  if (!prompt) {
+    throw new ApiError(400, "Prompt is required");
+  }
+
+  try {
+    // Sanitize input
+    const sanitizedPrompt = prompt.trim();
+
+    // Validate prompt
+    aiVideoGeneratorService.validatePrompt(sanitizedPrompt);
+
+    // Check if user has active subscription
+    const subscription = await Subscription.findOne({ userId });
+    const hasActiveSubscription = subscription && subscription.isActive();
+
+    // Get AI Video Generator service
+    service = await Service.findOne({
+      type: "ai_video_generator",
+      status: "active",
+    });
+    if (!service) {
+      throw new ApiError(404, "AI Video Generator service not available");
+    }
+
+    // Get today's usage
+    const videoUsageData = await getTodayUsage(
+      userId,
+      service._id,
+      "videosGenerated"
+    );
+    const videosUsedToday = videoUsageData.total;
+    logger.info("Videos used today", {
+      userId: userId.toString(),
+      videosUsedToday,
+    });
+
+    // Get limits based on subscription
+    let maxVideos = DEFAULT_VIDEO_LIMIT;
+    if (hasActiveSubscription && subscription.planId) {
+      const plan = await SubscriptionPlan.findById(subscription.planId);
+      if (plan && plan.features.aiVideoGenerator?.enabled) {
+        maxVideos =
+          plan.features.aiVideoGenerator.videosPerDay || DEFAULT_VIDEO_LIMIT;
+      }
+    }
+
+    // For testing: Set default limit if 0
+    if (maxVideos === 0) {
+      maxVideos = DEFAULT_VIDEO_LIMIT;
+    }
+
+    // Check usage limits
+    const usageCheck = await checkUsageLimits({
+      userId,
+      serviceId: service._id,
+      limitType: "videos",
+      currentUsage: videosUsedToday,
+      maxLimit: maxVideos,
+      estimatedUsage: 0, // Videos are always 1 per request
+      socketIO: req.socketIO,
+      serviceName: "ai_video_generator",
+    });
+
+    if (!usageCheck.allowed) {
+      throw new ApiError(403, usageCheck.message);
+    }
+
+    const startTime = Date.now();
+
+    // Generate video (with storage enabled)
+    const videoResult = await aiVideoGeneratorService.generateVideo(
+      sanitizedPrompt,
+      {
+        duration: duration || 5,
+        resolution: resolution || "720p",
+        aspectRatio: aspectRatio || "16:9",
+        fps: fps || 24,
+        style: style || "cinematic",
+        saveToStorage: true, // Always save to permanent storage
+        userId: userId.toString(), // Pass userId for organizing videos
+      }
+    );
+
+    const generationTime = Date.now() - startTime;
+
+    // Save usage record
+    const videoServiceUsageData = {
+      userId: userId,
+      serviceId: service._id,
+      request: {
+        type: "video_generation",
+        prompt: sanitizedPrompt,
+        parameters: {
+          duration: videoResult.duration,
+          resolution: videoResult.resolution,
+          aspectRatio: videoResult.aspectRatio,
+          fps: videoResult.fps,
+          style: videoResult.style,
+        },
+        timestamp: new Date(),
+      },
+      response: {
+        success: true,
+        data: {
+          videoUrl: videoResult.videoUrl,
+          originalVideoUrl: videoResult.originalVideoUrl,
+          revisedPrompt: videoResult.revisedPrompt,
+          videosGenerated: 1,
+          duration: videoResult.duration,
+          resolution: videoResult.resolution,
+          aspectRatio: videoResult.aspectRatio,
+          fps: videoResult.fps,
+          style: videoResult.style,
+          isStored: videoResult.isStored || false,
+          storageInfo: videoResult.storageInfo || null,
+        },
+        responseTime: generationTime,
+        timestamp: new Date(),
+      },
+      cost: {
+        amount: calculateVideoCost(
+          videoResult.provider || "qwen",
+          videoResult.duration,
+          videoResult.resolution
+        ),
+        currency: "USD",
+      },
+      metadata: {
+        model: videoResult.model,
+        isMock: videoResult.isMock || false,
+      },
+    };
+
+    const serviceUsage = new ServiceUsage(videoServiceUsageData);
+    await serviceUsage.save();
+    logger.info("ServiceUsage saved successfully for video generation", {
+      userId: userId.toString(),
+      serviceId: service._id.toString(),
+    });
+
+    // Update remaining videos
+    const remainingVideos = maxVideos - (videosUsedToday + 1);
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          videoUrl: videoResult.videoUrl,
+          fullUrl: videoResult.fullUrl || videoResult.videoUrl,
+          originalVideoUrl: videoResult.originalVideoUrl,
+          revisedPrompt: videoResult.revisedPrompt,
+          originalPrompt: videoResult.originalPrompt || sanitizedPrompt,
+          duration: videoResult.duration,
+          resolution: videoResult.resolution,
+          aspectRatio: videoResult.aspectRatio,
+          fps: videoResult.fps,
+          style: videoResult.style,
+          generationTime: generationTime,
+          isStored: videoResult.isStored || false,
+          cost: calculateVideoCost(
+            videoResult.provider || "qwen",
+            videoResult.duration,
+            videoResult.resolution
+          ),
+          usage: {
+            videosUsedToday: videosUsedToday + 1,
+            maxVideos: maxVideos,
+            remainingVideos: remainingVideos,
+          },
+        },
+        "Video generated successfully"
+      )
+    );
+  } catch (error) {
+    logger.error("Video generation error", {
+      error: error.message,
+      userId: userId?.toString(),
+    });
+
+    // Save failed usage record
+    if (service && userId) {
+      await saveFailedUsage({
+        userId,
+        serviceId: service._id,
+        requestType: "video_generation",
+        requestData: {
+          prompt: req.body.prompt?.trim() || "",
+          parameters: {
+            duration: duration || 5,
+            resolution: resolution || "720p",
+            aspectRatio: aspectRatio || "16:9",
+            fps: fps || 24,
+            style: style || "cinematic",
+          },
+        },
+        error,
+        errorCode:
+          ERROR_CODES.VIDEO_GENERATION_FAILED || "VIDEO_GENERATION_FAILED",
+      });
+    }
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(500, `Video generation failed: ${error.message}`);
+  }
+});
+
+// Get user's video generation history
+export const getVideoHistory = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { page = 1, limit = 10 } = req.query;
+
+  const service = await Service.findOne({ type: "ai_video_generator" });
+  if (!service) {
+    throw new ApiError(404, "AI Video Generator service not found");
+  }
+
+  const skip = (page - 1) * limit;
+
+  const history = await ServiceUsage.find({
+    userId: userId,
+    serviceId: service._id,
+    "response.success": true,
+  })
+    .sort({ "request.timestamp": -1 })
+    .skip(skip)
+    .limit(parseInt(limit))
+    .select("request response cost metadata createdAt");
+
+  const total = await ServiceUsage.countDocuments({
+    userId: userId,
+    serviceId: service._id,
+    "response.success": true,
+  });
+
+  // Transform history items to include fullUrl for each video
+  const transformedHistory = history.map((item) => {
+    const responseData = item.response?.data || {};
+
+    // Construct fullUrl if not already present
+    let fullUrl = responseData.fullUrl;
+    if (!fullUrl && responseData.videoUrl) {
+      if (responseData.videoUrl.startsWith("/")) {
+        fullUrl = getImageUrl(responseData.videoUrl); // Reuse image URL utility
+      } else if (
+        responseData.videoUrl.startsWith("http://") ||
+        responseData.videoUrl.startsWith("https://")
+      ) {
+        fullUrl = responseData.videoUrl;
+      } else {
+        fullUrl = getImageUrl(
+          `/generated-videos/${userId}/${responseData.videoUrl}`
+        );
+      }
+    }
+
+    return {
+      _id: item._id,
+      request: {
+        prompt: item.request?.prompt,
+        parameters: item.request?.parameters,
+        timestamp: item.request?.timestamp,
+      },
+      response: {
+        ...responseData,
+        fullUrl: fullUrl || responseData.videoUrl,
+      },
+      cost: item.cost,
+      metadata: item.metadata,
+      createdAt: item.createdAt,
+    };
+  });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        history: transformedHistory,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+      "Video history retrieved successfully"
+    )
+  );
+});
+
+// Get Video Generation Options (Resolutions, Durations, Styles, Aspect Ratios)
+export const getVideoOptions = asyncHandler(async (req, res) => {
+  const resolutions = aiVideoGeneratorService.getSupportedResolutions();
+  const durations = aiVideoGeneratorService.getSupportedDurations();
+  const aspectRatios = aiVideoGeneratorService.getSupportedAspectRatios();
+  const styles = aiVideoGeneratorService.getSupportedStyles();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        resolutions: resolutions,
+        durations: durations,
+        aspectRatios: aspectRatios,
+        styles: styles,
+      },
+      "Video generator options retrieved successfully"
     )
   );
 });

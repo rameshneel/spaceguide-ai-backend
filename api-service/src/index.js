@@ -12,6 +12,7 @@ import { initializeSocketIO } from "./services/communication/socketIOService.js"
 import {
   initializeAITextWriterService,
   initializeAIImageGeneratorService,
+  initializeAIVideoGeneratorService,
   initializeAIChatbotBuilderService,
 } from "./services/ai/utils/serviceInitializer.js";
 import { initializeSubscriptionPlans } from "./services/subscription/planInitializer.js";
@@ -57,6 +58,7 @@ const startServer = async () => {
     // Initialize AI services
     await initializeAITextWriterService();
     await initializeAIImageGeneratorService();
+    await initializeAIVideoGeneratorService();
     await initializeAIChatbotBuilderService();
 
     // Initialize subscription plans

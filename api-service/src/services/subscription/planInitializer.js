@@ -39,6 +39,11 @@ export const initializeSubscriptionPlans = async () => {
             requestsPerDay: 3,
             enabled: true,
           },
+          aiVideoGenerator: {
+            videosPerDay: 1,
+            requestsPerDay: 1,
+            enabled: true,
+          },
           aiSearch: {
             searchesPerDay: 10,
             requestsPerDay: 10,
@@ -80,6 +85,11 @@ export const initializeSubscriptionPlans = async () => {
             requestsPerDay: 25,
             enabled: true,
           },
+          aiVideoGenerator: {
+            videosPerDay: 3,
+            requestsPerDay: 3,
+            enabled: true,
+          },
           aiSearch: {
             searchesPerDay: 100, // Updated to match UI: 100 searches/day
             requestsPerDay: 100,
@@ -118,6 +128,11 @@ export const initializeSubscriptionPlans = async () => {
           aiImageGenerator: {
             imagesPerDay: 150, // UI: 150 images/day ✅
             requestsPerDay: 150,
+            enabled: true,
+          },
+          aiVideoGenerator: {
+            videosPerDay: 10,
+            requestsPerDay: 10,
             enabled: true,
           },
           aiSearch: {
@@ -161,6 +176,11 @@ export const initializeSubscriptionPlans = async () => {
             requestsPerDay: 999999999,
             enabled: true,
           },
+          aiVideoGenerator: {
+            videosPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
           aiSearch: {
             searchesPerDay: 999999999,
             requestsPerDay: 999999999,
@@ -178,6 +198,52 @@ export const initializeSubscriptionPlans = async () => {
         },
         status: "active",
         displayOrder: 4,
+        isPopular: false,
+      },
+      {
+        name: "unlimited",
+        displayName: "Unlimited Plan",
+        description:
+          "Unlimited access to all features - The ultimate plan for power users",
+        price: {
+          monthly: 159,
+          yearly: 1590, // ~$132.50/month with yearly discount
+          currency: "USD",
+        },
+        type: "enterprise", // Using enterprise type as it's the closest match
+        features: {
+          aiTextWriter: {
+            wordsPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiImageGenerator: {
+            imagesPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiVideoGenerator: {
+            videosPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiSearch: {
+            searchesPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiChatbot: {
+            chatbotsPerAccount: 999999999, // Unlimited chatbots
+            messagesPerDay: 999999999, // Unlimited queries
+            enabled: true,
+          },
+          prioritySupport: true,
+          apiAccess: true,
+          customBranding: true,
+          analytics: true,
+        },
+        status: "active",
+        displayOrder: 5,
         isPopular: false,
       },
     ];
@@ -213,6 +279,11 @@ const updateExistingPlans = async () => {
           aiImageGenerator: {
             imagesPerDay: 3,
             requestsPerDay: 3,
+            enabled: true,
+          },
+          aiVideoGenerator: {
+            videosPerDay: 1,
+            requestsPerDay: 1,
             enabled: true,
           },
           aiSearch: { searchesPerDay: 10, requestsPerDay: 10, enabled: true },
@@ -307,11 +378,49 @@ const updateExistingPlans = async () => {
           analytics: true,
         },
       },
+      unlimited: {
+        price: { monthly: 159, yearly: 1590, currency: "USD" },
+        features: {
+          aiTextWriter: {
+            wordsPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiImageGenerator: {
+            imagesPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiVideoGenerator: {
+            videosPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiSearch: {
+            searchesPerDay: 999999999,
+            requestsPerDay: 999999999,
+            enabled: true,
+          },
+          aiChatbot: {
+            chatbotsPerAccount: 999999999,
+            messagesPerDay: 999999999,
+            enabled: true,
+          },
+          prioritySupport: true,
+          apiAccess: true,
+          customBranding: true,
+          analytics: true,
+        },
+      },
     };
 
     // Update each plan
     for (const [planType, updateData] of Object.entries(planUpdates)) {
-      const plan = await SubscriptionPlan.findOne({ type: planType });
+      // For unlimited plan, search by name instead of type
+      const plan = planType === "unlimited" 
+        ? await SubscriptionPlan.findOne({ name: "unlimited" })
+        : await SubscriptionPlan.findOne({ type: planType });
+      
       if (plan) {
         // Update price
         plan.price = updateData.price;
@@ -329,7 +438,24 @@ const updateExistingPlans = async () => {
           `   ✅ Updated ${plan.displayName}: $${plan.price.monthly}/month`
         );
       } else {
-        logger.warn(`   ⚠️  Plan '${planType}' not found, skipping update`);
+        // If plan doesn't exist, create it (for unlimited plan)
+        if (planType === "unlimited") {
+          const newPlan = new SubscriptionPlan({
+            name: "unlimited",
+            displayName: "Unlimited Plan",
+            description: "Unlimited access to all features - The ultimate plan for power users",
+            price: updateData.price,
+            type: "enterprise",
+            features: updateData.features,
+            status: "active",
+            displayOrder: 5,
+            isPopular: false,
+          });
+          await newPlan.save();
+          logger.info(`   ✅ Created ${newPlan.displayName}: $${newPlan.price.monthly}/month`);
+        } else {
+          logger.warn(`   ⚠️  Plan '${planType}' not found, skipping update`);
+        }
       }
     }
 

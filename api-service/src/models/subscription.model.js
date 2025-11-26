@@ -30,10 +30,23 @@ const subscriptionSchema = new mongoose.Schema(
       default: "pending",
     },
 
+    provider: {
+      type: String,
+      enum: ["stripe", "paypal"],
+      default: "stripe",
+      index: true,
+    },
+
     // Stripe Integration
     stripeSubscriptionId: String,
     stripeCustomerId: String,
     stripePriceId: String,
+
+    // PayPal Integration
+    paypalSubscriptionId: String,
+    paypalPlanId: String,
+    paypalApprovalUrl: String,
+    paypalPayerId: String,
 
     // Billing
     billingCycle: {

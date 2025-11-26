@@ -8,11 +8,20 @@ import {
   createSubscription,
   handleWebhook,
 } from "../services/payment/stripe.js";
+import {
+  createPayPalSubscriptionSession,
+  getPayPalSubscriptionDetails,
+  activatePayPalSubscription,
+  cancelPayPalSubscription as cancelPaypalSubscriptionService,
+  verifyPayPalWebhookSignature,
+  applyPlanToUserSubscription,
+} from "../services/payment/paypal.js";
 import Subscription from "../models/subscription.model.js";
 import SubscriptionPlan from "../models/subscriptionPlan.model.js";
 import User from "../models/user.model.js";
 import Payment from "../models/payment.model.js";
 import logger from "../utils/logger.js";
+import { calculatePeriodEnd } from "../utils/subscriptionUtils.js";
 
 // Create Stripe customer
 export const createStripeCustomer = asyncHandler(async (req, res) => {
@@ -464,6 +473,237 @@ export const createStripeSubscription = asyncHandler(async (req, res) => {
   }
 });
 
+// ========================================
+// PAYPAL SUBSCRIPTION CONTROLLERS
+// ========================================
+
+// Create PayPal subscription session
+export const createPayPalSubscription = asyncHandler(async (req, res) => {
+  if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
+    throw new ApiError(
+      500,
+      "PayPal is not configured. Please contact support."
+    );
+  }
+
+  const userId = req.user._id;
+  const { planId, billingCycle = "monthly" } = req.body;
+
+  if (!planId) {
+    throw new ApiError(400, "Plan ID is required");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  let plan = null;
+  const mongoose = (await import("mongoose")).default;
+  if (mongoose.Types.ObjectId.isValid(planId)) {
+    plan = await SubscriptionPlan.findById(planId);
+  }
+  if (!plan) {
+    plan = await SubscriptionPlan.findOne({
+      type: planId,
+      status: "active",
+    });
+  }
+
+  if (!plan) {
+    throw new ApiError(404, `Subscription plan not found: ${planId}`);
+  }
+
+  if (plan.type === "free") {
+    throw new ApiError(400, "Cannot create PayPal subscription for free plan");
+  }
+
+  const amount =
+    billingCycle === "yearly" ? plan.price.yearly : plan.price.monthly;
+  const currency = (plan.price.currency || "USD").toUpperCase();
+
+  try {
+    const session = await createPayPalSubscriptionSession({
+      user,
+      plan,
+      billingCycle,
+    });
+
+    const paymentRecord = new Payment({
+      userId: user._id,
+      amount: Math.round((amount || 0) * 100),
+      currency,
+      status: "pending",
+      paypal: {
+        subscriptionId: session.subscriptionId,
+        planId: session.planId,
+        approvalUrl: session.approvalUrl,
+      },
+      subscription: {
+        plan: billingCycle,
+        autoRenew: true,
+      },
+      metadata: {
+        source: "paypal_subscription",
+        planId: plan._id.toString(),
+        billingCycle,
+      },
+    });
+    await paymentRecord.save();
+
+    return res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          subscriptionId: session.subscriptionId,
+          approvalUrl: session.approvalUrl,
+          status: session.status,
+        },
+        "PayPal subscription created successfully"
+      )
+    );
+  } catch (error) {
+    logger.error("PayPal subscription creation failed:", error);
+    throw new ApiError(
+      500,
+      error?.message || "Failed to create PayPal subscription"
+    );
+  }
+});
+
+// Approve PayPal subscription after user completes approval flow
+export const approvePayPalSubscription = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { subscriptionId } = req.body;
+
+  if (!subscriptionId) {
+    throw new ApiError(400, "PayPal subscription ID is required");
+  }
+
+  let subscriptionDetails = await getPayPalSubscriptionDetails(subscriptionId);
+
+  if (subscriptionDetails.status === "APPROVED") {
+    await activatePayPalSubscription(subscriptionId, "User approved payment");
+    subscriptionDetails = await getPayPalSubscriptionDetails(subscriptionId);
+  }
+
+  if (!["ACTIVE", "APPROVED"].includes(subscriptionDetails.status)) {
+    throw new ApiError(
+      400,
+      `Subscription is not active yet. Current status: ${subscriptionDetails.status}`
+    );
+  }
+
+  const paypalPlanId = subscriptionDetails.plan_id;
+  const plan = await SubscriptionPlan.findOne({
+    $or: [
+      { "paypal.planIdMonthly": paypalPlanId },
+      { "paypal.planIdYearly": paypalPlanId },
+    ],
+  });
+
+  if (!plan) {
+    throw new ApiError(
+      404,
+      "Matching plan for PayPal subscription was not found"
+    );
+  }
+
+  const billingCycle =
+    plan.paypal?.planIdYearly === paypalPlanId ? "yearly" : "monthly";
+  const amount =
+    billingCycle === "yearly" ? plan.price.yearly : plan.price.monthly;
+  const currency = (plan.price.currency || "USD").toUpperCase();
+
+  const paymentRecord = await Payment.findOne({
+    userId,
+    "paypal.subscriptionId": subscriptionId,
+  }).sort({ createdAt: -1 });
+
+  if (paymentRecord) {
+    paymentRecord.status = "completed";
+    paymentRecord.paypal = paymentRecord.paypal || {};
+    paymentRecord.paypal.payerId =
+      subscriptionDetails.subscriber?.payer_id || paymentRecord.paypal.payerId;
+    paymentRecord.subscription = paymentRecord.subscription || {};
+    paymentRecord.subscription.plan = billingCycle;
+    paymentRecord.subscription.startDate = new Date();
+    paymentRecord.subscription.endDate = calculatePeriodEnd(billingCycle);
+    await paymentRecord.save();
+  }
+
+  const subscription = await applyPlanToUserSubscription({
+    userId,
+    plan,
+    billingCycle,
+    amount,
+    currency,
+    provider: "paypal",
+    paypalInfo: {
+      subscriptionId,
+      planId: paypalPlanId,
+      approvalUrl: paymentRecord?.paypal?.approvalUrl,
+    },
+  });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        subscription: {
+          id: subscription._id,
+          plan: subscription.plan,
+          billingCycle: subscription.billingCycle,
+          status: subscription.status,
+          currentPeriodStart: subscription.currentPeriodStart,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        },
+        paypal: {
+          subscriptionId,
+          status: subscriptionDetails.status,
+        },
+      },
+      "PayPal subscription activated successfully"
+    )
+  );
+});
+
+// Cancel PayPal subscription
+export const cancelPayPalSubscription = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { reason = "User requested cancellation" } = req.body;
+
+  const subscription = await Subscription.findOne({ userId });
+
+  if (
+    !subscription ||
+    subscription.provider !== "paypal" ||
+    !subscription.paypalSubscriptionId
+  ) {
+    throw new ApiError(404, "No active PayPal subscription found");
+  }
+
+  await cancelPaypalSubscriptionService(
+    subscription.paypalSubscriptionId,
+    reason
+  );
+
+  subscription.status = "cancelled";
+  subscription.cancelAtPeriodEnd = true;
+  await subscription.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        subscriptionId: subscription.paypalSubscriptionId,
+        status: subscription.status,
+      },
+      "PayPal subscription cancelled successfully"
+    )
+  );
+});
+
 // Handle Stripe webhooks
 export const handleStripeWebhook = asyncHandler(async (req, res) => {
   const signature = req.headers["stripe-signature"];
@@ -546,6 +786,25 @@ export const handleStripeWebhook = asyncHandler(async (req, res) => {
       `Webhook signature verification failed: ${error.message}`
     );
   }
+});
+
+// Handle PayPal webhooks
+export const handlePayPalWebhook = asyncHandler(async (req, res) => {
+  const rawBody =
+    typeof req.rawBody === "string"
+      ? req.rawBody
+      : JSON.stringify(req.body || {});
+
+  const isValid = await verifyPayPalWebhookSignature(req.headers, rawBody);
+
+  if (!isValid) {
+    throw new ApiError(400, "Invalid PayPal webhook signature");
+  }
+
+  const event = JSON.parse(rawBody);
+  await processPayPalWebhookEvent(event);
+
+  return res.status(200).json({ received: true });
 });
 
 // Webhook handlers
@@ -1072,6 +1331,192 @@ const handlePaymentIntentCanceled = async (paymentIntent) => {
   } catch (error) {
     logger.error("Error handling payment_intent.canceled:", error);
   }
+};
+
+// ========================================
+// PAYPAL WEBHOOK HELPERS
+// ========================================
+
+const processPayPalWebhookEvent = async (event) => {
+  const eventType = event?.event_type;
+  const resource = event?.resource || {};
+
+  try {
+    switch (eventType) {
+      case "BILLING.SUBSCRIPTION.ACTIVATED":
+      case "BILLING.SUBSCRIPTION.UPDATED":
+      case "BILLING.SUBSCRIPTION.RE-ACTIVATED":
+        await syncPayPalSubscription(resource);
+        break;
+      case "BILLING.SUBSCRIPTION.CANCELLED":
+      case "BILLING.SUBSCRIPTION.SUSPENDED":
+        await markPayPalSubscriptionStatus(
+          resource,
+          eventType === "BILLING.SUBSCRIPTION.SUSPENDED"
+            ? "inactive"
+            : "cancelled"
+        );
+        break;
+      case "PAYMENT.SALE.COMPLETED":
+        await recordPayPalPayment(resource, "completed");
+        break;
+      case "PAYMENT.SALE.DENIED":
+        await recordPayPalPayment(resource, "failed");
+        break;
+      default:
+        logger.info(`ℹ️ PayPal webhook received: ${eventType}`);
+    }
+  } catch (error) {
+    logger.error("Error processing PayPal webhook:", error);
+    throw error;
+  }
+};
+
+const resolveUserIdFromResource = async (resource) => {
+  if (resource.custom_id) {
+    return resource.custom_id;
+  }
+
+  const subscriptionRecord = await Subscription.findOne({
+    paypalSubscriptionId: resource.id || resource.billing_agreement_id,
+  });
+  if (subscriptionRecord) {
+    return subscriptionRecord.userId;
+  }
+
+  const paymentRecord = await Payment.findOne({
+    "paypal.subscriptionId": resource.id || resource.billing_agreement_id,
+  });
+  return paymentRecord?.userId || null;
+};
+
+const syncPayPalSubscription = async (resource) => {
+  const subscriptionId = resource.id;
+  const planId = resource.plan_id;
+
+  if (!subscriptionId || !planId) {
+    logger.warn("PayPal subscription sync skipped - missing identifiers");
+    return;
+  }
+
+  const plan = await SubscriptionPlan.findOne({
+    $or: [
+      { "paypal.planIdMonthly": planId },
+      { "paypal.planIdYearly": planId },
+    ],
+  });
+
+  if (!plan) {
+    logger.warn(`PayPal plan not mapped in database: ${planId}`);
+    return;
+  }
+
+  const billingCycle =
+    plan.paypal?.planIdYearly === planId ? "yearly" : "monthly";
+  const amount =
+    billingCycle === "yearly" ? plan.price.yearly : plan.price.monthly;
+  const currency = (plan.price.currency || "USD").toUpperCase();
+
+  const userId = await resolveUserIdFromResource(resource);
+  if (!userId) {
+    logger.warn(
+      `Unable to resolve user for PayPal subscription ${subscriptionId}`
+    );
+    return;
+  }
+
+  await applyPlanToUserSubscription({
+    userId,
+    plan,
+    billingCycle,
+    amount,
+    currency,
+    provider: "paypal",
+    paypalInfo: {
+      subscriptionId,
+      planId,
+      approvalUrl: null,
+    },
+  });
+};
+
+const markPayPalSubscriptionStatus = async (resource, status) => {
+  const subscriptionId =
+    resource.id || resource.billing_agreement_id || resource.subscription_id;
+  if (!subscriptionId) {
+    return;
+  }
+
+  const subscription = await Subscription.findOne({
+    paypalSubscriptionId: subscriptionId,
+  });
+
+  if (subscription) {
+    subscription.status = status;
+    subscription.cancelAtPeriodEnd = status === "cancelled";
+    await subscription.save();
+  }
+};
+
+const recordPayPalPayment = async (resource, status) => {
+  const subscriptionId =
+    resource.billing_agreement_id || resource.id || resource.subscription_id;
+  if (!subscriptionId) {
+    return;
+  }
+
+  const amountValue =
+    Number(resource.amount?.total || resource.amount?.value || 0) || 0;
+  const currency = (
+    resource.amount?.currency ||
+    resource.amount?.currency_code ||
+    "USD"
+  ).toUpperCase();
+
+  let payment = await Payment.findOne({
+    "paypal.subscriptionId": subscriptionId,
+  }).sort({ createdAt: -1 });
+
+  if (!payment) {
+    const userId = await resolveUserIdFromResource(resource);
+    if (!userId) {
+      logger.warn(
+        `PayPal payment event without matching payment record: ${subscriptionId}`
+      );
+      return;
+    }
+
+    payment = new Payment({
+      userId,
+      amount: Math.round(amountValue * 100),
+      currency,
+      status: status === "completed" ? "completed" : "failed",
+      paypal: {
+        subscriptionId,
+        captureId: resource.id,
+      },
+      subscription: {
+        plan: "monthly",
+      },
+      metadata: {
+        source: "paypal_webhook",
+      },
+    });
+  } else {
+    payment.status = status === "completed" ? "completed" : "failed";
+    payment.paypal = payment.paypal || {};
+    payment.paypal.captureId = resource.id;
+  }
+
+  if (status !== "completed" && resource?.reason_code) {
+    payment.error = {
+      code: resource.reason_code,
+      message: resource?.reason || "Payment failed",
+      details: resource?.state || "failed",
+    };
+  }
+
+  await payment.save();
 };
 
 // ========================================

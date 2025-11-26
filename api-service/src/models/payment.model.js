@@ -45,6 +45,15 @@ const paymentSchema = new mongoose.Schema(
       invoiceId: String,
       chargeId: String,
     },
+    // PayPal Information
+    paypal: {
+      subscriptionId: String,
+      planId: String,
+      orderId: String,
+      captureId: String,
+      payerId: String,
+      approvalUrl: String,
+    },
 
     // Payment Method
     paymentMethod: {

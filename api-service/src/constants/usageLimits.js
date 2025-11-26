@@ -5,6 +5,7 @@
 
 export const DEFAULT_WORD_LIMIT = 500;
 export const DEFAULT_IMAGE_LIMIT = 3;
+export const DEFAULT_VIDEO_LIMIT = 1; // Videos are more resource-intensive
 
 // Usage warning thresholds (percentage)
 export const USAGE_WARNING_THRESHOLD = 80;

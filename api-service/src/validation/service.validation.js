@@ -83,6 +83,50 @@ export const validateImageGeneration = [
     ),
 ];
 
+// Video Generation Validation
+export const validateVideoGeneration = [
+  body("prompt")
+    .trim()
+    .notEmpty()
+    .withMessage("Prompt is required")
+    .isLength({ min: 3, max: 4000 })
+    .withMessage("Prompt must be between 3 and 4000 characters"),
+
+  body("duration")
+    .optional()
+    .isIn([3, 5, 10, 15, 30])
+    .withMessage("Duration must be one of: 3, 5, 10, 15, 30 seconds"),
+
+  body("resolution")
+    .optional()
+    .isIn(["720p", "1080p"])
+    .withMessage('Resolution must be "720p" or "1080p"'),
+
+  body("aspectRatio")
+    .optional()
+    .isIn(["16:9", "9:16", "1:1"])
+    .withMessage('Aspect ratio must be one of: "16:9", "9:16", "1:1"'),
+
+  body("fps")
+    .optional()
+    .isInt({ min: 15, max: 60 })
+    .withMessage("FPS must be between 15 and 60"),
+
+  body("style")
+    .optional()
+    .isIn([
+      "cinematic",
+      "realistic",
+      "artistic",
+      "animated",
+      "documentary",
+      "futuristic",
+    ])
+    .withMessage(
+      "Style must be one of: cinematic, realistic, artistic, animated, documentary, futuristic"
+    ),
+];
+
 // Future validation for other services can be added here:
 // export const validateSearchQuery = [...];
 // export const validateChatbotCreation = [...];

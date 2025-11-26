@@ -480,6 +480,16 @@ See `.env.dev`, `.env.staging`, or `.env.prod` files (created by setup scripts) 
 - `STRIPE_WEBHOOK_SECRET` - Stripe webhook secret
 - `STRIPE_PUBLISHABLE_KEY` - Stripe publishable key
 
+#### PayPal
+
+- `PAYPAL_CLIENT_ID` - PayPal REST app client ID
+- `PAYPAL_CLIENT_SECRET` - PayPal REST app client secret
+- `PAYPAL_MODE` - `sandbox` (default) or `live`
+- `PAYPAL_WEBHOOK_ID` - PayPal webhook ID for signature verification
+- `PAYPAL_RETURN_URL` - (Optional) Return URL after successful approval
+- `PAYPAL_CANCEL_URL` - (Optional) Cancel URL if user abandons checkout
+- `PAYPAL_BRAND_NAME` - (Optional) Brand name shown on PayPal checkout
+
 ---
 
 ## 🔐 Authentication
