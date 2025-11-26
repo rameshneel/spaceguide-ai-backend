@@ -71,12 +71,14 @@ services:
       # Only set if you want to override from host environment
       # - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
       # - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      #- STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      #- STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      #- OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     # Note: ports are defined in override files (docker-compose.dev.yml, docker-compose.staging.yml, docker-compose.prod.yml)
     # Base file doesn't define ports to avoid conflicts
+    env_file:
+      - ./api-service/.env.dev
     volumes:
       - backend_uploads:/app/uploads
       - backend_images:/app/public/generated-images
