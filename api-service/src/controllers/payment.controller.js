@@ -523,10 +523,13 @@ export const createPayPalSubscription = asyncHandler(async (req, res) => {
   const currency = (plan.price.currency || "USD").toUpperCase();
 
   try {
+    // Use SDK flow (popup) instead of redirect flow
+    // This allows PayPal SDK to handle approval internally
     const session = await createPayPalSubscriptionSession({
       user,
       plan,
       billingCycle,
+      useSDKFlow: true, // Enable SDK flow for popup approval
     });
 
     const paymentRecord = new Payment({

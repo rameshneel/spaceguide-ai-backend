@@ -193,40 +193,57 @@ export const createPayPalSubscriptionSession = async ({
   user,
   plan,
   billingCycle,
+  useSDKFlow = false, // Flag to indicate if using PayPal SDK (popup) flow
 }) => {
   const paypalPlanId = await ensurePaypalPlan(plan, billingCycle);
 
   const controller = getSubscriptionsController();
-  const { result } = await controller.createSubscription({
-    body: {
-      planId: paypalPlanId,
-      customId: `${user._id}`,
-      applicationContext: {
-        brandName: PAYPAL_BRAND_NAME,
-        userAction: "SUBSCRIBE_NOW",
-        returnUrl: PAYPAL_RETURN_URL,
-        cancelUrl: PAYPAL_CANCEL_URL,
-      },
-      subscriber: {
-        name: {
-          givenName: user.firstName || user.name || "Subscriber",
-          surname: user.lastName || "SpaceGuideAI",
-        },
+
+  // For SDK flow (vault: true), we don't need returnUrl/cancelUrl
+  // The SDK handles approval internally via popup
+  const subscriptionBody = {
+    planId: paypalPlanId,
+    customId: `${user._id}`,
+    applicationContext: {
+      brandName: PAYPAL_BRAND_NAME,
+      userAction: "SUBSCRIBE_NOW",
+    },
+    subscriber: {
+      name: {
+        givenName: user.firstName || user.name || "Subscriber",
+        surname: user.lastName || "SpaceGuideAI",
       },
     },
+  };
+
+  // For SDK flow, use a placeholder URL since SDK handles approval internally
+  // PayPal API still requires returnUrl/cancelUrl, but SDK intercepts the flow
+  if (useSDKFlow) {
+    // Use current frontend URL as fallback - SDK will handle the actual flow
+    subscriptionBody.applicationContext.returnUrl = `${FRONTEND_URL}/payment/success`;
+    subscriptionBody.applicationContext.cancelUrl = `${FRONTEND_URL}/payment/cancel`;
+  } else {
+    subscriptionBody.applicationContext.returnUrl = PAYPAL_RETURN_URL;
+    subscriptionBody.applicationContext.cancelUrl = PAYPAL_CANCEL_URL;
+  }
+
+  const { result } = await controller.createSubscription({
+    body: subscriptionBody,
   });
 
   const approvalLink = result.links?.find(
     (link) => link.rel === "approve"
   )?.href;
 
-  if (!approvalLink) {
+  // For SDK flow, approval link might not be needed, but PayPal still returns it
+  // For redirect flow, approval link is required
+  if (!useSDKFlow && !approvalLink) {
     throw new Error("PayPal did not return an approval link");
   }
 
   return {
     subscriptionId: result.id,
-    approvalUrl: approvalLink,
+    approvalUrl: approvalLink || null, // May be null for SDK flow
     status: result.status,
     planId: paypalPlanId,
   };
