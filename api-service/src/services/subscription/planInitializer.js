@@ -206,8 +206,8 @@ export const initializeSubscriptionPlans = async () => {
         description:
           "Unlimited access to all features - The ultimate plan for power users",
         price: {
-          monthly: 159,
-          yearly: 1590, // ~$132.50/month with yearly discount
+          monthly: 149,
+          yearly: 1490, // ~$124.17/month with yearly discount
           currency: "USD",
         },
         type: "enterprise", // Using enterprise type as it's the closest match
@@ -379,7 +379,7 @@ const updateExistingPlans = async () => {
         },
       },
       unlimited: {
-        price: { monthly: 159, yearly: 1590, currency: "USD" },
+        price: { monthly: 149, yearly: 1490, currency: "USD" },
         features: {
           aiTextWriter: {
             wordsPerDay: 999999999,
