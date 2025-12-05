@@ -7,18 +7,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies for canvas package
-# Canvas requires Python, build tools, and Cairo/Pango libraries
+# Install build dependencies for native modules (if needed)
 RUN apk add --no-cache \
     python3 \
     make \
-    g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev \
-    librsvg-dev \
-    pkgconfig
+    g++
 
 # Copy package files
 COPY package*.json ./
@@ -26,7 +19,7 @@ COPY package*.json ./
 # Use BuildKit cache mount for npm (keeps downloaded packages)
 # This significantly speeds up rebuilds when dependencies don't change
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production
+    npm ci --omit=dev
 
 ############################
 # Production stage
@@ -35,15 +28,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install runtime dependencies for canvas
-# (Only runtime libraries, not dev packages)
+# Install runtime dependencies
 RUN apk add --no-cache \
-    dumb-init \
-    cairo \
-    jpeg \
-    pango \
-    giflib \
-    librsvg
+    dumb-init
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
