@@ -336,15 +336,42 @@ export const createPayPalSubscriptionSession = async ({
       planId: paypalPlanId,
     };
   } catch (error) {
+    // Parse error response (might be stringified JSON)
+    let errorDetails = {};
+    try {
+      const rawError =
+        error.response?.data || error.body || error.message || "{}";
+      errorDetails =
+        typeof rawError === "string" ? JSON.parse(rawError) : rawError;
+    } catch (parseError) {
+      // If parsing fails, try to extract from error message
+      errorDetails = { message: error.message || String(error) };
+    }
+
     // Check if error is INVALID_RESOURCE_ID (plan doesn't exist in PayPal)
-    const errorDetails = error.response?.data || error.body || {};
+    const statusCode =
+      error.statusCode || error.response?.status || error.status;
+    const errorName = errorDetails.name || "";
+    const errorIssue =
+      errorDetails.details?.[0]?.issue || errorDetails.issue || "";
+    const errorMessage = errorDetails.message || error.message || "";
+
     const isInvalidPlanId =
-      error.statusCode === 404 ||
-      error.response?.status === 404 ||
-      errorDetails.name === "INVALID_RESOURCE_ID" ||
-      errorDetails.issue === "INVALID_RESOURCE_ID" ||
-      (errorDetails.message &&
-        errorDetails.message.toLowerCase().includes("resource does not exist"));
+      statusCode === 404 ||
+      errorName === "RESOURCE_NOT_FOUND" ||
+      errorIssue === "INVALID_RESOURCE_ID" ||
+      errorMessage.toLowerCase().includes("resource does not exist") ||
+      errorMessage.toLowerCase().includes("invalid_resource_id");
+
+    logger.debug("PayPal error analysis:", {
+      statusCode,
+      errorName,
+      errorIssue,
+      errorMessage: errorMessage.substring(0, 100),
+      isInvalidPlanId,
+      retryCount,
+      errorDetails: JSON.stringify(errorDetails).substring(0, 200),
+    });
 
     // If plan ID is invalid and we haven't retried yet, clear the stored plan ID and retry
     if (isInvalidPlanId && retryCount < MAX_RETRIES) {
@@ -393,21 +420,23 @@ export const createPayPalSubscriptionSession = async ({
       planName: plan.name,
       billingCycle,
       error: error.message,
-      response: error.response?.data || error.body,
-      status: error.statusCode || error.response?.status,
+      response: errorDetails,
+      status: statusCode,
       stack: error.stack,
       isInvalidPlanId,
       retryCount,
     });
 
     // Extract detailed error message from PayPal response
-    const errorMessage =
-      error.response?.data?.message ||
-      error.body?.message ||
+    const errorMessagePaypal =
+      errorDetails.message ||
+      errorDetails.details?.[0]?.description ||
       error.message ||
       "Failed to create PayPal subscription";
 
-    throw new Error(`PayPal subscription creation failed: ${errorMessage}`);
+    throw new Error(
+      `PayPal subscription creation failed: ${errorMessagePaypal}`
+    );
   }
 };
 
