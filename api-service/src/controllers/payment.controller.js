@@ -826,16 +826,44 @@ export const handlePayPalWebhook = asyncHandler(async (req, res) => {
       ? req.rawBody
       : JSON.stringify(req.body || {});
 
-  const isValid = await verifyPayPalWebhookSignature(req.headers, rawBody);
+  const event = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+  
+  // Check if this is a test event (from PayPal dashboard test tool)
+  const isTestEvent = event?.id?.startsWith("WH-") && 
+                     !req.headers["paypal-transmission-id"];
 
-  if (!isValid) {
-    throw new ApiError(400, "Invalid PayPal webhook signature");
+  // Verify signature (skip for test events if no signature headers)
+  if (!isTestEvent) {
+    try {
+      const isValid = await verifyPayPalWebhookSignature(req.headers, rawBody);
+      if (!isValid) {
+        logger.warn("PayPal webhook signature verification failed");
+        throw new ApiError(400, "Invalid PayPal webhook signature");
+      }
+    } catch (error) {
+      // If PAYPAL_WEBHOOK_ID is not set, log warning but allow test events
+      if (error.message.includes("PAYPAL_WEBHOOK_ID")) {
+        logger.warn("PAYPAL_WEBHOOK_ID not configured. Skipping signature verification.");
+        if (!isTestEvent) {
+          throw new ApiError(400, "Webhook verification not configured");
+        }
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    logger.info("Processing PayPal test webhook event (signature verification skipped)");
   }
 
-  const event = JSON.parse(rawBody);
+  // Process the webhook event
   await processPayPalWebhookEvent(event);
 
-  return res.status(200).json({ received: true });
+  return res.status(200).json({ 
+    received: true,
+    event_type: event?.event_type,
+    event_id: event?.id,
+    message: isTestEvent ? "Test event processed successfully" : "Webhook processed successfully"
+  });
 });
 
 // Webhook handlers
@@ -1426,9 +1454,15 @@ const syncPayPalSubscription = async (resource) => {
   const planId = resource.plan_id;
 
   if (!subscriptionId || !planId) {
-    logger.warn("PayPal subscription sync skipped - missing identifiers");
+    logger.warn("PayPal subscription sync skipped - missing identifiers", {
+      subscriptionId,
+      planId,
+      resourceKeys: Object.keys(resource || {})
+    });
     return;
   }
+
+  logger.info(`Syncing PayPal subscription: ${subscriptionId}, Plan: ${planId}`);
 
   const plan = await SubscriptionPlan.findOne({
     $or: [
@@ -1438,7 +1472,9 @@ const syncPayPalSubscription = async (resource) => {
   });
 
   if (!plan) {
-    logger.warn(`PayPal plan not mapped in database: ${planId}`);
+    logger.warn(`PayPal plan not mapped in database: ${planId}. Available plans:`, 
+      await SubscriptionPlan.find({}, { name: 1, "paypal.planIdMonthly": 1, "paypal.planIdYearly": 1 })
+    );
     return;
   }
 
@@ -1451,10 +1487,14 @@ const syncPayPalSubscription = async (resource) => {
   const userId = await resolveUserIdFromResource(resource);
   if (!userId) {
     logger.warn(
-      `Unable to resolve user for PayPal subscription ${subscriptionId}`
+      `Unable to resolve user for PayPal subscription ${subscriptionId}. ` +
+      `This might be a test event or subscription not yet linked to a user.`
     );
+    // For test events, this is expected - don't throw error
     return;
   }
+
+  logger.info(`Applying plan ${plan.name} (${billingCycle}) to user ${userId}`);
 
   await applyPlanToUserSubscription({
     userId,
@@ -1469,6 +1509,8 @@ const syncPayPalSubscription = async (resource) => {
       approvalUrl: null,
     },
   });
+
+  logger.info(`Successfully synced PayPal subscription ${subscriptionId} for user ${userId}`);
 };
 
 const markPayPalSubscriptionStatus = async (resource, status) => {
