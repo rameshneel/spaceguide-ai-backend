@@ -177,7 +177,8 @@ const buildBillingCycle = (billingCycle, amount, currency) => {
   ];
 };
 
-const ensurePaypalPlan = async (plan, billingCycle) => {
+const ensurePaypalPlan = async (plan, billingCycle, retryCount = 0) => {
+  const MAX_RETRIES = 1; // Only retry once if product ID is invalid
   plan.paypal = plan.paypal || {};
   const field = billingCycle === "yearly" ? "planIdYearly" : "planIdMonthly";
   if (plan.paypal[field]) {
@@ -235,16 +236,69 @@ const ensurePaypalPlan = async (plan, billingCycle) => {
     );
     return result.id;
   } catch (error) {
+    // Parse error response (might be stringified JSON)
+    let errorDetails = {};
+    try {
+      const rawError =
+        error.response?.data || error.body || error.message || "{}";
+      errorDetails =
+        typeof rawError === "string" ? JSON.parse(rawError) : rawError;
+    } catch (parseError) {
+      // If parsing fails, try to extract from error message
+      errorDetails = { message: error.message || String(error) };
+    }
+
+    const statusCode =
+      error.statusCode || error.response?.status || error.status;
+    const errorIssue =
+      errorDetails.details?.[0]?.issue || errorDetails.issue || "";
+    const errorMessage = errorDetails.message || error.message || "";
+
+    const isInvalidProductId =
+      statusCode === 404 &&
+      (errorIssue === "INVALID_RESOURCE_ID" ||
+        errorMessage.toLowerCase().includes("invalid product id"));
+
+    // If product ID is invalid and we haven't retried yet, clear stored IDs and retry
+    if (isInvalidProductId && retryCount < MAX_RETRIES) {
+      const invalidProductId = plan.paypal?.productId;
+
+      logger.warn(
+        `Invalid PayPal product ID detected, clearing and recreating: ${invalidProductId}`,
+        {
+          planId: plan._id,
+          planName: plan.name,
+          billingCycle,
+          errorDetails,
+        }
+      );
+
+      // Clear both product and plan IDs
+      plan.paypal = plan.paypal || {};
+      plan.paypal.productId = undefined;
+      plan.paypal[field] = undefined;
+      plan.markModified("paypal");
+      await plan.save();
+
+      logger.info("Retrying PayPal plan creation with new product ID");
+      return ensurePaypalPlan(plan, billingCycle, retryCount + 1);
+    }
+
     logger.error("Failed to create PayPal plan:", {
       planName: plan.name,
       billingCycle,
       error: error.message,
-      response: error.response?.data || error.body,
-      status: error.statusCode || error.response?.status,
+      response: errorDetails,
+      status: statusCode,
+      isInvalidProductId,
+      retryCount,
     });
+
     throw new Error(
       `PayPal plan creation failed: ${
-        error.response?.data?.message || error.body?.message || error.message
+        errorDetails.message ||
+        errorDetails.details?.[0]?.description ||
+        error.message
       }`
     );
   }
