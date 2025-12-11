@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables (but NOT .env.dev, .env.staging, .env.prod)
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Model Cache (will be mounted as volume)
+.cache/
+
+# ML Model Files (exclude model weights, but NOT app/models/ Python code directory)
+# Note: We only exclude specific file extensions, not directories
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+test/
+tests/
+*.pyc
+
+# Build files
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+temp/
+tmp/
+

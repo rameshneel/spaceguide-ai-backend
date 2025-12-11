@@ -1,0 +1,80 @@
+services:
+  # Note: MongoDB is installed system-wide (outside Docker)
+  # Backend connects to host MongoDB via host.docker.internal:27017
+
+  # Node.js Backend
+  backend:
+    build:
+      context: ./api-service
+      dockerfile: Dockerfile
+    container_name: ai-portal-backend
+    restart: unless-stopped
+    env_file:
+      - ./api-service/.env
+    ports:
+      - "${BACKEND_HOST_PORT:-5001}:5000"
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_images:/app/public/generated-images
+      - backend_logs:/app/logs
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    # Add extra_hosts to access host machine from container
+    # host.docker.internal works on Windows/Mac and Linux with Docker Desktop
+    # For Linux Docker Engine, use: "host.docker.internal:host-gateway"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ai-portal-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ChromaDB (Vector Database for embeddings)
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ai-portal-chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMADB_HOST_PORT:-8000}:8000"
+    volumes:
+      - chromadb_data:/data # Fixed: Changed from /chroma/chroma to /data
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - ai-portal-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/8000' || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  backend_uploads:
+    driver: local
+  backend_images:
+    driver: local
+  backend_logs:
+    driver: local
+  chromadb_data:
+    driver: local
+
+networks:
+  ai-portal-network:
+    driver: bridge

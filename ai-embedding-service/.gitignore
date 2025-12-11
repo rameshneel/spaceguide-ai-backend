@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment variables
+.env
+.env.dev
+.env.staging
+.env.prod
+.env.local
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Model Cache
+.cache/
+
+# ML Model Files (exclude model weights, but NOT app/models/ Python code directory)
+# Only exclude root-level models/ directory and ML model file extensions
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+
+# IMPORTANT: Do NOT exclude app/models/ - it contains Python code (Pydantic models)
+# The pattern below only excludes root-level models/ directory, not app/models/
+/models/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test_*.py
+check_*.py
+*_test.py
+
+# Old documentation
+INSTALL_FIX.md
+QUICK_FIX*.md
+PYTORCH_DLL_FIX.md
+
