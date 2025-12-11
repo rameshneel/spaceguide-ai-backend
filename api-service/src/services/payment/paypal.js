@@ -255,7 +255,10 @@ export const createPayPalSubscriptionSession = async ({
   plan,
   billingCycle,
   useSDKFlow = false, // Flag to indicate if using PayPal SDK (popup) flow
+  retryCount = 0,
 }) => {
+  const MAX_RETRIES = 1; // Only retry once if plan ID is invalid
+
   try {
     logger.debug("Creating PayPal subscription session:", {
       userId: user._id,
@@ -263,6 +266,7 @@ export const createPayPalSubscriptionSession = async ({
       planName: plan.name,
       billingCycle,
       useSDKFlow,
+      retryCount,
     });
 
     const paypalPlanId = await ensurePaypalPlan(plan, billingCycle);
@@ -332,6 +336,57 @@ export const createPayPalSubscriptionSession = async ({
       planId: paypalPlanId,
     };
   } catch (error) {
+    // Check if error is INVALID_RESOURCE_ID (plan doesn't exist in PayPal)
+    const errorDetails = error.response?.data || error.body || {};
+    const isInvalidPlanId =
+      error.statusCode === 404 ||
+      error.response?.status === 404 ||
+      errorDetails.name === "INVALID_RESOURCE_ID" ||
+      errorDetails.issue === "INVALID_RESOURCE_ID" ||
+      (errorDetails.message &&
+        errorDetails.message.toLowerCase().includes("resource does not exist"));
+
+    // If plan ID is invalid and we haven't retried yet, clear the stored plan ID and retry
+    if (isInvalidPlanId && retryCount < MAX_RETRIES) {
+      const field =
+        billingCycle === "yearly" ? "planIdYearly" : "planIdMonthly";
+      const invalidPlanId = plan.paypal?.[field];
+
+      logger.warn(
+        `Invalid PayPal plan ID detected, clearing and recreating: ${invalidPlanId}`,
+        {
+          planId: plan._id,
+          planName: plan.name,
+          billingCycle,
+          errorDetails,
+        }
+      );
+
+      // Clear the invalid plan ID
+      plan.paypal = plan.paypal || {};
+      plan.paypal[field] = undefined;
+      plan.markModified("paypal");
+      await plan.save();
+
+      // Reload plan from database to ensure fresh data
+      const refreshedPlan = await SubscriptionPlan.findById(plan._id);
+      if (!refreshedPlan) {
+        throw new Error(
+          `Plan not found after clearing invalid PayPal plan ID: ${plan._id}`
+        );
+      }
+
+      // Retry with a fresh plan creation
+      logger.info("Retrying PayPal subscription creation with new plan ID");
+      return createPayPalSubscriptionSession({
+        user,
+        plan: refreshedPlan,
+        billingCycle,
+        useSDKFlow,
+        retryCount: retryCount + 1,
+      });
+    }
+
     logger.error("Failed to create PayPal subscription session:", {
       userId: user._id,
       planId: plan._id,
@@ -341,6 +396,8 @@ export const createPayPalSubscriptionSession = async ({
       response: error.response?.data || error.body,
       status: error.statusCode || error.response?.status,
       stack: error.stack,
+      isInvalidPlanId,
+      retryCount,
     });
 
     // Extract detailed error message from PayPal response
