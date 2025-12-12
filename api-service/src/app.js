@@ -154,7 +154,15 @@ app.use(
   "/api/payment/paypal/webhook",
   express.raw({ type: "application/json" }),
   (req, res, next) => {
-    req.rawBody = req.body;
+    // Convert Buffer to string for PayPal webhook signature verification
+    // PayPal requires the exact raw body string for signature verification
+    if (Buffer.isBuffer(req.body)) {
+      req.rawBody = req.body.toString("utf8");
+    } else if (typeof req.body === "string") {
+      req.rawBody = req.body;
+    } else {
+      req.rawBody = JSON.stringify(req.body || {});
+    }
     next();
   }
 );

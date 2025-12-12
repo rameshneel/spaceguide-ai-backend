@@ -858,12 +858,23 @@ export const handleStripeWebhook = asyncHandler(async (req, res) => {
 
 // Handle PayPal webhooks
 export const handlePayPalWebhook = asyncHandler(async (req, res) => {
+  // Get raw body string (already converted from Buffer in middleware)
   const rawBody =
-    typeof req.rawBody === "string"
-      ? req.rawBody
-      : JSON.stringify(req.body || {});
+    req.rawBody ||
+    (typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
 
-  const event = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+  // Parse event for processing
+  let event;
+  try {
+    event = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+  } catch (parseError) {
+    logger.error("Failed to parse PayPal webhook body:", {
+      error: parseError.message,
+      rawBodyType: typeof rawBody,
+      rawBodyLength: rawBody?.length,
+    });
+    throw new ApiError(400, "Invalid webhook payload format");
+  }
 
   // Check if signature headers exist
   const hasSignatureHeaders =
@@ -882,6 +893,15 @@ export const handlePayPalWebhook = asyncHandler(async (req, res) => {
   // Verify signature only if headers exist and PAYPAL_WEBHOOK_ID is configured
   if (hasSignatureHeaders && process.env.PAYPAL_WEBHOOK_ID) {
     try {
+      // Log raw body info for debugging (without sensitive data)
+      logger.debug("Verifying PayPal webhook signature", {
+        event_type: event?.event_type,
+        event_id: event?.id,
+        rawBodyLength: rawBody?.length,
+        rawBodyType: typeof rawBody,
+        hasAllHeaders: !!hasSignatureHeaders,
+      });
+
       const isValid = await verifyPayPalWebhookSignature(req.headers, rawBody);
       if (!isValid) {
         logger.warn("PayPal webhook signature verification failed", {

@@ -663,6 +663,20 @@ export const verifyPayPalWebhookSignature = async (headers, rawBody) => {
       },
     });
 
+    // Ensure rawBody is a string (required for signature verification)
+    const rawBodyString = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
+    
+    // Parse webhook event for verification
+    let webhookEvent;
+    try {
+      webhookEvent = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+    } catch (parseError) {
+      logger.error("Failed to parse webhook event for verification:", {
+        error: parseError.message,
+      });
+      throw new Error("Invalid webhook event format");
+    }
+
     const payload = {
       auth_algo: headers["paypal-auth-algo"],
       cert_url: headers["paypal-cert-url"],
@@ -670,7 +684,7 @@ export const verifyPayPalWebhookSignature = async (headers, rawBody) => {
       transmission_sig: headers["paypal-transmission-sig"],
       transmission_time: headers["paypal-transmission-time"],
       webhook_id: process.env.PAYPAL_WEBHOOK_ID,
-      webhook_event: typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody,
+      webhook_event: webhookEvent,
     };
 
     const { data } = await http.post(
