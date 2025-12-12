@@ -4,7 +4,7 @@ import {
   Environment,
   SubscriptionsController,
 } from "@paypal/paypal-server-sdk";
-import { safeLogger as logger } from "../../utils/logger.js";
+import logger from "../../utils/logger.js";
 import {
   calculatePeriodEnd,
   createSubscriptionData,
@@ -531,32 +531,67 @@ export const verifyPayPalWebhookSignature = async (headers, rawBody) => {
     );
   }
 
-  const token = await getAccessToken();
-  const http = axios.create({
-    baseURL: PAYPAL_BASE_URL,
-    timeout: 15000,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
+  // Check if all required headers are present
+  const requiredHeaders = [
+    "paypal-auth-algo",
+    "paypal-cert-url",
+    "paypal-transmission-id",
+    "paypal-transmission-sig",
+    "paypal-transmission-time",
+  ];
 
-  const payload = {
-    auth_algo: headers["paypal-auth-algo"],
-    cert_url: headers["paypal-cert-url"],
-    transmission_id: headers["paypal-transmission-id"],
-    transmission_sig: headers["paypal-transmission-sig"],
-    transmission_time: headers["paypal-transmission-time"],
-    webhook_id: process.env.PAYPAL_WEBHOOK_ID,
-    webhook_event: typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody,
-  };
-
-  const { data } = await http.post(
-    "/v1/notifications/verify-webhook-signature",
-    payload
+  const missingHeaders = requiredHeaders.filter(
+    (header) => !headers[header]
   );
 
-  return data.verification_status === "SUCCESS";
+  if (missingHeaders.length > 0) {
+    throw new Error(
+      `Missing required PayPal webhook headers: ${missingHeaders.join(", ")}`
+    );
+  }
+
+  try {
+    const token = await getAccessToken();
+    const http = axios.create({
+      baseURL: PAYPAL_BASE_URL,
+      timeout: 15000,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const payload = {
+      auth_algo: headers["paypal-auth-algo"],
+      cert_url: headers["paypal-cert-url"],
+      transmission_id: headers["paypal-transmission-id"],
+      transmission_sig: headers["paypal-transmission-sig"],
+      transmission_time: headers["paypal-transmission-time"],
+      webhook_id: process.env.PAYPAL_WEBHOOK_ID,
+      webhook_event: typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody,
+    };
+
+    const { data } = await http.post(
+      "/v1/notifications/verify-webhook-signature",
+      payload
+    );
+
+    if (data.verification_status !== "SUCCESS") {
+      logger.warn("PayPal webhook signature verification failed", {
+        verification_status: data.verification_status,
+        verification_reason: data.verification_reason,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    logger.error("Error verifying PayPal webhook signature:", {
+      error: error.message,
+      response: error.response?.data,
+    });
+    throw error;
+  }
 };
 
 export const applyPlanToUserSubscription = async ({
