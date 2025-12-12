@@ -662,14 +662,15 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
     );
   }
 
-  // Log subscription details for debugging
-  logger.debug("PayPal subscription details:", {
-    subscriptionId,
-    status: subscriptionDetails.status,
-    planId: subscriptionDetails.plan_id,
-    hasStatus: subscriptionDetails.status !== undefined,
-    allKeys: Object.keys(subscriptionDetails || {}),
-  });
+  // Log subscription details for debugging (only in development)
+  if (process.env.NODE_ENV !== "production") {
+    logger.debug("PayPal subscription details:", {
+      subscriptionId: trimmedSubscriptionId,
+      status: subscriptionDetails.status,
+      planId: subscriptionDetails.plan_id,
+      hasStatus: subscriptionDetails.status !== undefined,
+    });
+  }
 
   // Check if subscription needs activation
   let subscriptionStatus = subscriptionDetails.status;
@@ -687,9 +688,9 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
       subscriptionStatus = subscriptionDetails.status;
     } catch (error) {
       logger.error("Error activating PayPal subscription:", {
-        subscriptionId,
+        subscriptionId: trimmedSubscriptionId,
         error: error.message,
-        stack: error.stack,
+        stack: process.env.NODE_ENV !== "production" ? error.stack : undefined,
       });
       throw new ApiError(
         500,
@@ -715,8 +716,8 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
       logger.info(
         "Subscription already active via webhook, skipping approval:",
         {
-          subscriptionId,
-          userId,
+          subscriptionId: trimmedSubscriptionId,
+          userId: userId.toString(),
         }
       );
 
@@ -740,7 +741,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
               currentPeriodEnd: existingSubscription.currentPeriodEnd,
             },
             paypal: {
-              subscriptionId,
+              subscriptionId: trimmedSubscriptionId,
               status: subscriptionStatus || "ACTIVE",
             },
             message: "Subscription already activated via webhook",
