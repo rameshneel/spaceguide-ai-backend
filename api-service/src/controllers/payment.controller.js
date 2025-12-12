@@ -610,20 +610,46 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const { subscriptionId } = req.body;
 
+  // Input validation
   if (!subscriptionId) {
     throw new ApiError(400, "PayPal subscription ID is required");
   }
 
+  // Validate subscription ID format (should start with "I-")
+  if (
+    typeof subscriptionId !== "string" ||
+    subscriptionId.trim().length === 0
+  ) {
+    throw new ApiError(400, "Invalid subscription ID format");
+  }
+
+  const trimmedSubscriptionId = subscriptionId.trim();
+
+  // Security: Basic format validation
+  if (
+    !trimmedSubscriptionId.startsWith("I-") &&
+    trimmedSubscriptionId.length < 10
+  ) {
+    logger.warn("Suspicious subscription ID format:", {
+      subscriptionId: trimmedSubscriptionId,
+      userId,
+      length: trimmedSubscriptionId.length,
+    });
+    // Still try to process, but log warning
+  }
+
   let subscriptionDetails;
   try {
-    subscriptionDetails = await getPayPalSubscriptionDetails(subscriptionId);
+    subscriptionDetails = await getPayPalSubscriptionDetails(
+      trimmedSubscriptionId
+    );
   } catch (error) {
     // Error already logged in getPayPalSubscriptionDetails with details
     const errorMessage = error.message || "Unknown error";
     const statusCode = error.originalError?.response?.status || 500;
 
     logger.error("Error fetching PayPal subscription details:", {
-      subscriptionId,
+      subscriptionId: trimmedSubscriptionId,
       errorMessage,
       statusCode,
       errorDetails: error.details,
@@ -650,8 +676,13 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
 
   if (subscriptionStatus === "APPROVED") {
     try {
-      await activatePayPalSubscription(subscriptionId, "User approved payment");
-      subscriptionDetails = await getPayPalSubscriptionDetails(subscriptionId);
+      await activatePayPalSubscription(
+        trimmedSubscriptionId,
+        "User approved payment"
+      );
+      subscriptionDetails = await getPayPalSubscriptionDetails(
+        trimmedSubscriptionId
+      );
       // Update status after activation
       subscriptionStatus = subscriptionDetails.status;
     } catch (error) {
@@ -676,7 +707,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
   ) {
     // Check if subscription already exists in our database (webhook might have processed it)
     const existingSubscription = await Subscription.findOne({
-      paypalSubscriptionId: subscriptionId,
+      paypalSubscriptionId: trimmedSubscriptionId,
       userId: userId,
     });
 
@@ -724,18 +755,18 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
     logger.info(
       "Subscription status undefined, waiting for webhook to process:",
       {
-        subscriptionId,
+        subscriptionId: trimmedSubscriptionId,
         userId,
         status: subscriptionStatus,
       }
     );
 
-    // Wait 3 seconds and check database again
+    // Wait 3 seconds and check database again (webhooks usually process within 5-10 seconds)
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
     // Check database again after waiting
     const retrySubscription = await Subscription.findOne({
-      paypalSubscriptionId: subscriptionId,
+      paypalSubscriptionId: trimmedSubscriptionId,
       userId: userId,
     });
 
@@ -743,7 +774,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
       logger.info(
         "Subscription activated via webhook after wait, returning success:",
         {
-          subscriptionId,
+          subscriptionId: trimmedSubscriptionId,
           userId,
         }
       );
@@ -766,7 +797,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
               currentPeriodEnd: retrySubscription.currentPeriodEnd,
             },
             paypal: {
-              subscriptionId,
+              subscriptionId: trimmedSubscriptionId,
               status: "ACTIVE",
             },
             message: "Subscription activated via webhook",
@@ -776,12 +807,11 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
       );
     }
 
-    // If still not active, throw error but with optimistic message
+    // If still not active, throw error but with user-friendly optimistic message
+    // Don't show technical details to user
     throw new ApiError(
-      400,
-      `Subscription is being processed. Current status: ${
-        subscriptionStatus || "pending"
-      }. Your subscription will be activated shortly via webhook. Please refresh the page in a few moments.`
+      202, // 202 Accepted - request is being processed
+      `Your payment was successful! Your subscription is being activated and will be ready in a few moments. You can refresh the page to see your updated subscription status.`
     );
   }
 
@@ -808,7 +838,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
 
   const paymentRecord = await Payment.findOne({
     userId,
-    "paypal.subscriptionId": subscriptionId,
+    "paypal.subscriptionId": trimmedSubscriptionId,
   }).sort({ createdAt: -1 });
 
   if (paymentRecord) {
@@ -831,7 +861,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
     currency,
     provider: "paypal",
     paypalInfo: {
-      subscriptionId,
+      subscriptionId: trimmedSubscriptionId,
       planId: paypalPlanId,
       approvalUrl: paymentRecord?.paypal?.approvalUrl,
     },
@@ -850,7 +880,7 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
           currentPeriodEnd: subscription.currentPeriodEnd,
         },
         paypal: {
-          subscriptionId,
+          subscriptionId: trimmedSubscriptionId,
           status: subscriptionDetails.status,
         },
       },
