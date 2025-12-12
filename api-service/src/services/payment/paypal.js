@@ -495,22 +495,124 @@ export const createPayPalSubscriptionSession = async ({
 };
 
 export const getPayPalSubscriptionDetails = async (subscriptionId) => {
-  const controller = getSubscriptionsController();
-  const { result } = await controller.getSubscription({
-    id: subscriptionId,
-  });
-  return result;
+  // Validate subscription ID format (PayPal subscription IDs start with "I-")
+  if (!subscriptionId || typeof subscriptionId !== "string") {
+    throw new Error("Invalid subscription ID: must be a non-empty string");
+  }
+
+  if (!subscriptionId.startsWith("I-")) {
+    logger.warn("Subscription ID doesn't match PayPal format (should start with 'I-'):", {
+      subscriptionId,
+      length: subscriptionId.length,
+    });
+    // Still try to fetch, but log warning
+  }
+
+  try {
+    const controller = getSubscriptionsController();
+    const { result } = await controller.getSubscription({
+      id: subscriptionId,
+    });
+    
+    if (!result) {
+      throw new Error("PayPal API returned empty result");
+    }
+    
+    return result;
+  } catch (error) {
+    // Parse PayPal SDK error response
+    let errorMessage = "Unknown error";
+    let errorDetails = {};
+
+    try {
+      // PayPal SDK errors have specific structure
+      if (error.response) {
+        errorDetails = error.response.data || error.response.body || {};
+        errorMessage = errorDetails.message || errorDetails.name || error.message || "The error response";
+      } else if (error.body) {
+        errorDetails = typeof error.body === "string" ? JSON.parse(error.body) : error.body;
+        errorMessage = errorDetails.message || errorDetails.name || error.message || "The error response";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      // Extract more details if available
+      if (errorDetails.details) {
+        errorDetails.details.forEach((detail) => {
+          if (detail.description) {
+            errorMessage += `: ${detail.description}`;
+          }
+        });
+      }
+    } catch (parseError) {
+      // If parsing fails, use original error message
+      errorMessage = error.message || "Failed to fetch subscription details";
+    }
+
+    logger.error("Error fetching PayPal subscription details:", {
+      subscriptionId,
+      errorMessage,
+      errorDetails,
+      originalError: error.message,
+    });
+
+    // Create a more descriptive error
+    const descriptiveError = new Error(errorMessage);
+    descriptiveError.originalError = error;
+    descriptiveError.details = errorDetails;
+    throw descriptiveError;
+  }
 };
 
 export const activatePayPalSubscription = async (
   subscriptionId,
   reason = "Activate subscription"
 ) => {
-  const controller = getSubscriptionsController();
-  await controller.activateSubscription({
-    id: subscriptionId,
-    body: { reason },
-  });
+  try {
+    const controller = getSubscriptionsController();
+    await controller.activateSubscription({
+      id: subscriptionId,
+      body: { reason },
+    });
+  } catch (error) {
+    // Parse PayPal SDK error response
+    let errorMessage = "Unknown error";
+    let errorDetails = {};
+
+    try {
+      if (error.response) {
+        errorDetails = error.response.data || error.response.body || {};
+        errorMessage = errorDetails.message || errorDetails.name || error.message || "Failed to activate subscription";
+      } else if (error.body) {
+        errorDetails = typeof error.body === "string" ? JSON.parse(error.body) : error.body;
+        errorMessage = errorDetails.message || errorDetails.name || error.message || "Failed to activate subscription";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      if (errorDetails.details) {
+        errorDetails.details.forEach((detail) => {
+          if (detail.description) {
+            errorMessage += `: ${detail.description}`;
+          }
+        });
+      }
+    } catch (parseError) {
+      errorMessage = error.message || "Failed to activate subscription";
+    }
+
+    logger.error("Error activating PayPal subscription:", {
+      subscriptionId,
+      errorMessage,
+      errorDetails,
+      originalError: error.message,
+    });
+
+    const descriptiveError = new Error(errorMessage);
+    descriptiveError.originalError = error;
+    descriptiveError.details = errorDetails;
+    throw descriptiveError;
+  }
 };
 
 export const cancelPayPalSubscription = async (
@@ -580,6 +682,14 @@ export const verifyPayPalWebhookSignature = async (headers, rawBody) => {
       logger.warn("PayPal webhook signature verification failed", {
         verification_status: data.verification_status,
         verification_reason: data.verification_reason,
+        webhook_id: process.env.PAYPAL_WEBHOOK_ID,
+        has_all_headers: !!(
+          headers["paypal-auth-algo"] &&
+          headers["paypal-cert-url"] &&
+          headers["paypal-transmission-id"] &&
+          headers["paypal-transmission-sig"] &&
+          headers["paypal-transmission-time"]
+        ),
       });
       return false;
     }

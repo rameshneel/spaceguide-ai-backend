@@ -618,16 +618,21 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
   try {
     subscriptionDetails = await getPayPalSubscriptionDetails(subscriptionId);
   } catch (error) {
+    // Error already logged in getPayPalSubscriptionDetails with details
+    const errorMessage = error.message || "Unknown error";
+    const statusCode = error.originalError?.response?.status || 500;
+
     logger.error("Error fetching PayPal subscription details:", {
       subscriptionId,
-      error: error.message,
-      stack: error.stack,
+      errorMessage,
+      statusCode,
+      errorDetails: error.details,
+      originalError: error.originalError?.message,
     });
+
     throw new ApiError(
-      500,
-      `Failed to fetch PayPal subscription details: ${
-        error.message || "Unknown error"
-      }`
+      statusCode >= 400 && statusCode < 500 ? statusCode : 500,
+      `Failed to fetch PayPal subscription details: ${errorMessage}`
     );
   }
 
