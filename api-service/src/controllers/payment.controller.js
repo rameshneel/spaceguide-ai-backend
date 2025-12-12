@@ -636,10 +636,24 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
     );
   }
 
-  if (subscriptionDetails.status === "APPROVED") {
+  // Log subscription details for debugging
+  logger.debug("PayPal subscription details:", {
+    subscriptionId,
+    status: subscriptionDetails.status,
+    planId: subscriptionDetails.plan_id,
+    hasStatus: subscriptionDetails.status !== undefined,
+    allKeys: Object.keys(subscriptionDetails || {}),
+  });
+
+  // Check if subscription needs activation
+  let subscriptionStatus = subscriptionDetails.status;
+
+  if (subscriptionStatus === "APPROVED") {
     try {
       await activatePayPalSubscription(subscriptionId, "User approved payment");
       subscriptionDetails = await getPayPalSubscriptionDetails(subscriptionId);
+      // Update status after activation
+      subscriptionStatus = subscriptionDetails.status;
     } catch (error) {
       logger.error("Error activating PayPal subscription:", {
         subscriptionId,
@@ -655,10 +669,62 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
     }
   }
 
-  if (!["ACTIVE", "APPROVED"].includes(subscriptionDetails.status)) {
+  // If status is undefined or not active, check if webhook already processed it
+  if (
+    !subscriptionStatus ||
+    !["ACTIVE", "APPROVED"].includes(subscriptionStatus)
+  ) {
+    // Check if subscription already exists in our database (webhook might have processed it)
+    const existingSubscription = await Subscription.findOne({
+      paypalSubscriptionId: subscriptionId,
+      userId: userId,
+    });
+
+    if (existingSubscription && existingSubscription.status === "active") {
+      logger.info(
+        "Subscription already active via webhook, skipping approval:",
+        {
+          subscriptionId,
+          userId,
+        }
+      );
+
+      // Return success even though PayPal status might be undefined
+      // Webhook has already activated it
+      const plan = await SubscriptionPlan.findById(existingSubscription.planId);
+      if (!plan) {
+        throw new ApiError(404, "Plan not found for existing subscription");
+      }
+
+      return res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            subscription: {
+              id: existingSubscription._id,
+              plan: existingSubscription.plan,
+              billingCycle: existingSubscription.billingCycle,
+              status: existingSubscription.status,
+              currentPeriodStart: existingSubscription.currentPeriodStart,
+              currentPeriodEnd: existingSubscription.currentPeriodEnd,
+            },
+            paypal: {
+              subscriptionId,
+              status: subscriptionStatus || "ACTIVE",
+            },
+            message: "Subscription already activated via webhook",
+          },
+          "PayPal subscription already activated"
+        )
+      );
+    }
+
+    // If not active and not in database, throw error
     throw new ApiError(
       400,
-      `Subscription is not active yet. Current status: ${subscriptionDetails.status}`
+      `Subscription is not active yet. Current status: ${
+        subscriptionStatus || "undefined"
+      }. Please wait a moment for webhook to process, or try refreshing.`
     );
   }
 

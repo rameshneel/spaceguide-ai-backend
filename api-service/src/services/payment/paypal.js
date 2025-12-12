@@ -518,6 +518,16 @@ export const getPayPalSubscriptionDetails = async (subscriptionId) => {
       throw new Error("PayPal API returned empty result");
     }
     
+    // Log response structure for debugging
+    logger.debug("PayPal subscription details response:", {
+      subscriptionId,
+      hasStatus: !!result.status,
+      status: result.status,
+      hasPlanId: !!result.plan_id,
+      planId: result.plan_id,
+      keys: Object.keys(result || {}),
+    });
+    
     return result;
   } catch (error) {
     // Parse PayPal SDK error response
