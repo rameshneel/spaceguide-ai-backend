@@ -719,12 +719,69 @@ export const approvePayPalSubscription = asyncHandler(async (req, res) => {
       );
     }
 
-    // If not active and not in database, throw error
+    // If not active and not in database, wait a bit for webhook to process
+    // Webhooks usually process within 5-10 seconds
+    logger.info(
+      "Subscription status undefined, waiting for webhook to process:",
+      {
+        subscriptionId,
+        userId,
+        status: subscriptionStatus,
+      }
+    );
+
+    // Wait 3 seconds and check database again
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // Check database again after waiting
+    const retrySubscription = await Subscription.findOne({
+      paypalSubscriptionId: subscriptionId,
+      userId: userId,
+    });
+
+    if (retrySubscription && retrySubscription.status === "active") {
+      logger.info(
+        "Subscription activated via webhook after wait, returning success:",
+        {
+          subscriptionId,
+          userId,
+        }
+      );
+
+      const plan = await SubscriptionPlan.findById(retrySubscription.planId);
+      if (!plan) {
+        throw new ApiError(404, "Plan not found for existing subscription");
+      }
+
+      return res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            subscription: {
+              id: retrySubscription._id,
+              plan: retrySubscription.plan,
+              billingCycle: retrySubscription.billingCycle,
+              status: retrySubscription.status,
+              currentPeriodStart: retrySubscription.currentPeriodStart,
+              currentPeriodEnd: retrySubscription.currentPeriodEnd,
+            },
+            paypal: {
+              subscriptionId,
+              status: "ACTIVE",
+            },
+            message: "Subscription activated via webhook",
+          },
+          "PayPal subscription activated successfully"
+        )
+      );
+    }
+
+    // If still not active, throw error but with optimistic message
     throw new ApiError(
       400,
-      `Subscription is not active yet. Current status: ${
-        subscriptionStatus || "undefined"
-      }. Please wait a moment for webhook to process, or try refreshing.`
+      `Subscription is being processed. Current status: ${
+        subscriptionStatus || "pending"
+      }. Your subscription will be activated shortly via webhook. Please refresh the page in a few moments.`
     );
   }
 
